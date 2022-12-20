@@ -1,0 +1,465 @@
+#!/usr/bin/env perl
+
+# PODNAME: ev-dynacharge.pl
+# ABSTRACT: Dynamically adapt the charge current of an EV vehicle based on the total house energy balance
+# VERSION
+
+use strict;
+use warnings;
+
+use Net::MQTT::Simple;
+use Log::Log4perl qw(:easy);
+use Getopt::Long 'HelpMessage';
+use Pod::Usage;
+use JSON;
+
+my ($verbose, $mqtt_host, $mqtt_username, $mqtt_password);
+
+# Default values
+$mqtt_host = 'broker';
+
+GetOptions(
+    'host=s'     => \$mqtt_host,
+    'user=s'     => \$mqtt_username,
+    'pass=s'     => \$mqtt_password,
+    'help|?|h'   => sub { HelpMessage(0) },
+    'man'        => sub { pod2usage( -exitstatus => 0, -verbose => 2 )},
+    'v|verbose'  => \$verbose,
+) or HelpMessage(1);
+
+if ($verbose) {
+	Log::Log4perl->easy_init($DEBUG);
+} else {
+   	Log::Log4perl->easy_init($INFO);
+}
+
+# Connect to the broker
+my $mqtt = Net::MQTT::Simple->new($mqtt_host) || die "Could not connect to MQTT broker: $!";
+INFO "MQTT logger client ID is " . $mqtt->_client_identifier();
+
+# Depending if authentication is required, login to the broker
+if($mqtt_username and $mqtt_password) {
+    $mqtt->login($mqtt_username, $mqtt_password);
+}
+
+
+# Subscribe to topics:
+my $set_topic = 'chargepoint/maxcurrent';
+my $timers_topic = 'chargepoint/config/#';
+#   for access to ..config/boostmode
+#                 ..config/haltmode
+my $mode = 'chargepoint/mode';
+my $nr_phases_topic = 'chargepoint/nr_of_phases';
+
+my $preferredCurrent_topic = 'chargepoint/config/preferredcurrent';
+my $preferredNrPhases_topic = 'chargepoint/config/preferrednrofphases';
+my $chargeMode_topic = 'chargepoint/config/chargemode';
+
+my $maxcurrent = 16;
+my $nr_of_phases = 0;
+
+$mqtt->subscribe('dsmr/reading/phase_currently_returned_l1',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_returned_l2',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_returned_l3',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l1',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l2',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l3',  \&mqtt_handler);
+
+$mqtt->subscribe('dsmr/meter-stats/electricity_tariff',  \&mqtt_handler);
+$mqtt->subscribe('chargepoint/chargepointStatus',  \&mqtt_handler);
+$mqtt->subscribe('chargepoint/voltage',  \&mqtt_handler);
+$mqtt->subscribe($timers_topic,  \&mqtt_handler);
+my $offset = 0.05;
+my $current = 6;
+
+# Variables for current power
+my $totalPower = 0;
+my $l1power = 0;
+my $l2power = 0;
+my $l3power = 0;
+
+# Charging limits
+my $mainfuse = 25;
+my $safetyMarge = 3;
+
+my $tariff = 0;
+my $realistic_current = 0;
+
+# Configurable variables through MQTT
+my $boostmode_timer = 0;
+my $preferred_current = 16;
+my $preferred_nrPhases = 3;
+my $chargepointStatus = 'charging';
+
+# Vars for phase switching
+my $phases_counter = 0;
+my $phases_lastChecked = 1;
+my $phases_lastSwitched = 0;
+my $phases_counterLimit = 300;
+
+
+my $chargingPower = 0;
+my $voltage = 0.23;
+my $topicUpdated = 0;
+my $topic2Update = 0;
+my $resetOnDisconnect = 0;
+
+my $chargeMode = 'sunOnly'; # sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect
+my $timestamp = 0;
+
+while (1) {
+	$mqtt->tick();
+	# Check if energy value has been uupdated, and only update if charger is in use
+	if ($topicUpdated >= 3 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
+		$topicUpdated = 0;
+		# Determine maximum load to avoid switch of the main fuse
+		if($chargepointStatus =~ /charging/) {
+			$realistic_current = get_maximumCurrent($preferred_current, $current);
+		} else {
+			$realistic_current = get_maximumCurrent($preferred_current, 0);
+		}
+		
+		# Determine total power
+		$totalPower = $l1power + $l2power + $l3power;
+		
+		if ($maxcurrent == 0) {
+			$current = 0;
+			INFO "** Current is set to 0, not charging";
+		} elsif ($boostmode_timer > 0) {
+			if($timestamp == 0) {
+				$timestamp = midnight_seconds();
+			} else {
+				$boostmode_timer = $boostmode_timer - (midnight_seconds() - $timestamp);
+				$timestamp = midnight_seconds();
+			}
+			if($boostmode_timer < 1) {
+				$boostmode_timer = 0;
+				$timestamp = 0;
+			}
+			$current = $realistic_current;
+			INFO "Boosttimer |  Current boost charge mode active at $realistic_current A - " . $boostmode_timer . " seconds remaining" ;
+			$mqtt->publish("chargepoint/status/boostmode_countdown_timer", $boostmode_timer);
+		} elsif ($chargeMode =~ /sunOnly/ || $chargeMode =~ /sunAndOffPeak/) {
+		
+			# 1 phase
+			# 1380 min
+			# 3680 max
+			
+			# 3 phases
+			# 4140 min
+			# 11040 max
+			if ($tariff == 1 && $chargeMode =~ /sunAndOffPeak/) {
+				$current = $realistic_current;
+				set_nrOfPhases($preferred_nrPhases);
+			} else {
+				# Determine netto energy balance when charging is active - Ignore this if phases just has been switched
+				if ($chargepointStatus =~ /charging/ && (midnight_seconds() - $phases_lastSwitched > 12)) {
+					DEBUG "Reading of energy balance: $totalPower kW";
+					$chargingPower = ($nr_of_phases * $current * $voltage);
+					$totalPower = $totalPower + $chargingPower;
+					DEBUG "Netto energy balance (including current charging): $totalPower kW. Charging at $chargingPower kW";
+				}
+				
+				# Determine amount of phases
+				if ($totalPower > (0.0+$offset) && $totalPower < (4.0-$offset)) {
+					# If current number of phases is not equal, update timer
+					if ($nr_of_phases != 1) {
+						# Update last checked to current time if empty
+						if($phases_lastChecked == 0) {
+							$phases_lastChecked = midnight_seconds();
+							$phases_counter = 0;
+						}
+						# Update counter
+						$phases_counter = midnight_seconds() - $phases_lastChecked;
+
+						# Switch if limit is reached to switch in nr of phases
+						if ($phases_counter > $phases_counterLimit || $nr_of_phases == 0) {
+							set_nrOfPhases(1);
+						}
+						else {
+							INFO "Wait for switch to 1 phase. Current counter: $phases_counter s (of $phases_counterLimit s)";
+						}
+					} else {
+						# Reset counter if current nr of phases is correct and timer was used
+						if($phases_lastChecked != 0){
+							$phases_lastChecked = 0;
+						}
+					}
+				} elsif ($totalPower > (4.14+$offset)) {
+					if ($nr_of_phases != 3) {
+						# Update last checked to current time if empty
+						if($phases_lastChecked == 0) {
+							$phases_lastChecked = midnight_seconds();
+							$phases_counter = 0;
+						}
+						# Update counter
+						$phases_counter = midnight_seconds() - $phases_lastChecked;
+						
+						# Switch if limit is reached to switch in nr of phases
+						if($phases_counter > $phases_counterLimit || $nr_of_phases == 0) {
+							set_nrOfPhases(3);
+						}
+						else {
+							INFO "Wait for switch to 3 phases. Current counter: $phases_counter s (of $phases_counterLimit s)";
+						}
+					} else {
+						# Reset counter if current nr of phases is correct and timer was used
+						if($phases_lastChecked != 0){
+							$phases_lastChecked = 0;
+						}
+					}
+				} elsif ($nr_of_phases == 0) {
+					INFO "Switching to one-phase charging (not set yet)";
+					set_nrOfPhases(1);
+				}
+				$current = int($totalPower / ($voltage * $nr_of_phases));
+
+				$current = $maxcurrent if ($current > $maxcurrent);
+				$current =  0 if ($current < 6 && $nr_of_phases == 1);
+				$current =  6 if ($current < 6 && $nr_of_phases == 3);
+			}
+			INFO "$chargeMode | Current is now $current based on balance $totalPower kW with $nr_of_phases phase(s)";
+		} elsif ($chargeMode =~ /offPeakOnly/) {
+			# Off-peak is 1, Normal = 2
+			if($tariff == 1) {
+				INFO "$chargeMode selected, charging at $realistic_current A since it is off-Peak";
+				$current = $realistic_current;
+				set_nrOfPhases($preferred_nrPhases);
+			} else {
+				INFO "$chargeMode selected, currently it is normal rate. No charging.";
+				$current = 0;
+			}
+		} elsif ($chargeMode =~ /boostUntillDisconnect/) {
+			INFO "$chargeMode | Charging at $realistic_current A.";
+			set_nrOfPhases($preferred_nrPhases);
+			$current = $realistic_current;
+		} else {
+			INFO "Non valid chargemode selected ($chargeMode), reverting it to default 'sunOnly'. Valid values: sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect";
+			$mqtt->publish($chargeMode_topic, 'sunOnly');
+			$current = 0;
+		}
+		
+		# Update new current
+		update_loadcurrent($current);	
+	}
+	sleep(1);
+}
+
+sub mqtt_handler {
+	my ($topic, $data) = @_;
+
+
+	TRACE "Got '$data' from $topic";
+		
+	if ($topic =~ /phase_currently_returned_l1/) {
+		return if ($data == 0); # Do not process empty values
+		$l1power = $data * 1;
+		$topicUpdated++;
+	} elsif ($topic =~ /phase_currently_returned_l2/) {
+		return if ($data == 0); # Do not process empty values
+		$l2power = $data * 1;
+		$topicUpdated++;
+	} elsif ($topic =~ /phase_currently_returned_l3/) {
+		return if ($data == 0); # Do not process empty values
+		$l3power = $data * 1;
+		$topicUpdated++;
+	} elsif ($topic =~ /phase_currently_delivered_l1/) {
+		return if ($data == 0); # Do not process empty values
+		$l1power = $data * - 1;
+		$topicUpdated++;
+	} elsif ($topic =~ /phase_currently_delivered_l2/) {
+		return if ($data == 0); # Do not process empty values
+		$l2power = $data * - 1;
+		$topicUpdated++;
+	} elsif ($topic =~ /phase_currently_delivered_l3/) {
+		return if ($data == 0); # Do not process empty values
+		$l3power = $data * - 1;
+		$topicUpdated++;
+	} elsif ($topic =~ /boostperiod/) {
+		INFO "Setting boostperiod timer to $data seconds";
+		$boostmode_timer = $data;
+	} elsif ($topic =~ /maxcurrent/) {
+		if ($data > 0 && $data < 16) {
+			$maxcurrent = $data;
+			INFO "Maximum current is now $maxcurrent A";
+		} else {
+			WARN "Refuse to set invalid maximum current: '$data'";
+		}
+	} elsif ($topic =~ /preferredcurrent/) {
+		if ($data > 0 && $data < 16) {
+			$preferred_current = $data;
+			INFO "Preferred current is now $preferred_current A";
+		} else {
+			WARN "Refuse to set invalid maximum current: '$data'";
+		}
+	} elsif ($topic =~ /preferrednrofphases/) {
+		if ($data == 1 || $data == 3) {
+			$preferred_nrPhases = $data;
+			INFO "Preferred nr of phases is now $preferred_nrPhases";
+		} else {
+			WARN "Refuse to set invalid phases number: '$data'";
+		}
+	} elsif ($topic =~ /electricity_tariff/) {
+		return if ($data == 0); # Do not process empty values
+		$tariff = $data;
+	} elsif ($topic =~ /chargepointStatus/) {
+		$chargepointStatus = $data;
+		INFO "Chargepoint status: $data";
+		if ($chargepointStatus =~ /available/) {
+			if ($resetOnDisconnect == 1) {
+				INFO "Resetting counters";
+				$mqtt->publish($chargeMode_topic, 'sunOnly');
+				$mqtt->publish($preferredCurrent_topic, 16);
+				$mqtt->publish($preferredNrPhases_topic, 3);
+			}
+		}
+	} elsif ($topic =~ /chargemode/) {
+		$chargeMode = $data;
+		INFO "Chargepoint modus: $data";
+	} elsif ($topic =~ /voltage/) {
+		return if ($data == 0); # Do not process empty values
+		$voltage = ($data / 1000);
+		INFO "Current voltage: $voltage"
+	} else {
+		WARN "Invalid message received from topic " . $topic;
+		return;
+	}
+	
+	DEBUG "Energy balance is now " . $totalPower . "kW";
+}
+
+sub update_loadcurrent {
+	
+	my $current = shift();
+	
+	#my $original_float = $current;
+    my $network_long = unpack 'L', pack 'f', $current;
+
+
+    #my $pack_float = pack 'f', $original_float;
+    #my $unpack_long = unpack 'L', $pack_float;
+
+
+    #print $network_long . "\n";
+
+
+	my $parameters = {
+		'value_msb' => $network_long / 2**16,
+		'value_lsb' => $network_long % 2**16,
+		'current'   => $current
+	};
+
+    #my $value_lsb = $network_long % 2**16;
+    #my $value_msb = $network_long / 2**16;
+    
+	#my $client = Device::Modbus::TCP::Client->new( host => '192.168.3.144');
+	#my $client = Device::Modbus::TCP::Client->new( host => '192.168.1.142');
+	#my $req1 = $client->write_multiple_registers(
+	#	unit => 1, address => 1210,
+	#	values => [$val2, $val1]);
+	#my $req2 = $client->write_multiple_registers(
+	#	unit => 2, address => 1210,
+    #	values => [$val2, $val1]);
+	#
+	#$client->send_request($req1) || die "Send error: $!";
+	#$client->send_request($req2) || die "Send error: $!";
+	#sleep(5);
+	#$client->disconnect();
+	
+	# Create the json struct
+	my $json = encode_json($parameters);
+	$mqtt->publish($set_topic, $json);
+	
+}
+
+sub midnight_seconds {
+   my @time = localtime();
+   my $secs = ($time[2] * 3600) + ($time[1] * 60) + $time[0];
+
+   return $secs;
+}
+
+sub set_nrOfPhases {
+	my ( $arg1 ) = @_;
+	if ($arg1 != $nr_of_phases) {
+		INFO "Switching to $arg1 phase charging";
+		$nr_of_phases = $arg1;
+		$mqtt->publish($nr_phases_topic, $nr_of_phases);
+		$phases_counter = 0;
+		$phases_lastSwitched = midnight_seconds();
+	}
+}
+
+sub get_maximumCurrent {
+	my ( $pref_current, $charging_current ) = @_;
+	my $newChargingCurrent = 0;
+	my $highestCurrent = 0;
+	
+	if ($nr_of_phases == 1) {
+		$highestCurrent = $l1power;
+	} else {
+		if ($l1power <= $l2power && $l1power <= $l3power) {
+			$highestCurrent = $l1power;
+		} elsif ($l2power <= $l1power && $l2power <= $l3power) {
+			$highestCurrent = $l2power;
+		} elsif ($l3power <= $l1power && $l3power <= $l2power) {
+			$highestCurrent = $l3power;
+		} 
+	}
+	if (($highestCurrent * $voltage) >= ($mainfuse - $safetyMarge)) {
+		$newChargingCurrent = $charging_current + ($mainfuse - $safetyMarge) - $highestCurrent;
+	} else {
+		$newChargingCurrent = $pref_current;
+	}
+		
+	$newChargingCurrent = $maxcurrent if ($newChargingCurrent > $maxcurrent);
+	$newChargingCurrent = $pref_current if ($newChargingCurrent > $pref_current);
+	$newChargingCurrent = 0 if ($newChargingCurrent < 6);
+	
+	INFO "Highest load: $highestCurrent";
+	INFO "New charging current: $newChargingCurrent based on current load: L1: $l1power L2: $l2power L3: $l3power";
+	return $newChargingCurrent;
+}
+
+=head1 NAME
+
+ev-dynacharge.pl - Dynamically charge an electric vehicle based on the energy budget of the house
+
+=head1 SYNOPSIS
+
+    ./ev-dynacharge.pl [--host <MQTT server hostname...> ]
+    
+=head1 DESCRIPTION
+
+This script allows to dynamically steer the charging process of an electric vehicle. It fetches energy 
+consumption values over MQTT and based on the balance and the selected operating mode it will set the 
+charge current of the chargepoint where the vehicle is connected to.
+
+This is very much a work in progress, additional documentation and howto information will be added
+after the intial field testing is done.
+
+=head1 Using docker to run this script in a container
+
+This repository contains all required files to build a minimal Alpine linux container that runs the script.
+The advantage of using this method of running the script is that you don't need to setup the required Perl
+environment to run the script, you just bring up the container.
+
+To do this check out this repository, configure the MQTT broker host, username and password in the C<.env> file and run:
+
+C<docker compose up -d>.
+
+=head1 Updating the README.md file
+
+The README.md file in this repo is generated from the POD content in the script. To update it, run
+
+C<pod2github bin/ev-dynacharge.pl E<gt> README.md>
+
+=head1 AUTHOR
+
+Lieven Hollevoet C<hollie@cpan.org>
+
+=head1 LICENSE
+
+CC BY-NC-SA
+
+=cut
