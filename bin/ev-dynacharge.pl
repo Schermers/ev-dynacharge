@@ -80,7 +80,7 @@ my $l3power = 0;
 
 # Charging limits
 my $mainfuse = 25;
-my $safetyMarge = 3;
+my $safetyMarge = 2;
 
 my $tariff = 0;
 my $realistic_current = 0;
@@ -395,6 +395,7 @@ sub get_maximumCurrent {
 	my $newChargingCurrent = 0;
 	my $highestCurrent = 0;
 	
+	# Determine the highest phase usage
 	if ($nr_of_phases == 1) {
 		$highestCurrent = $l1power;
 	} else {
@@ -406,17 +407,20 @@ sub get_maximumCurrent {
 			$highestCurrent = $l3power;
 		} 
 	}
-	if (($highestCurrent * $voltage) >= ($mainfuse - $safetyMarge)) {
-		$newChargingCurrent = $charging_current + ($mainfuse - $safetyMarge) - $highestCurrent;
-	} else {
-		$newChargingCurrent = $pref_current;
-	}
+	
+	# Calculate the highest current based on power
+	$highestCurrent = ($highestCurrent / $voltage) * -1;
+	# Calculate the maximum charging current based on current usage and chargingpower
+	$newChargingCurrent = int($charging_current + ($mainfuse - $safetyMarge) - $highestCurrent);
 		
+	# Limit the charging current if it is higher than the maxcurrent	
 	$newChargingCurrent = $maxcurrent if ($newChargingCurrent > $maxcurrent);
+	# Limit the charging current if it is higher than the preferred current
 	$newChargingCurrent = $pref_current if ($newChargingCurrent > $pref_current);
+	# Limit the charging current if it is lower than the minimum current (6A)
 	$newChargingCurrent = 0 if ($newChargingCurrent < 6);
 	
-	INFO "Highest load: $highestCurrent";
+	INFO "Highest load: $highestCurrent A, current chargingcurrent: $charging_current A";
 	INFO "New charging current: $newChargingCurrent based on current load: L1: $l1power L2: $l2power L3: $l3power";
 	return $newChargingCurrent;
 }
