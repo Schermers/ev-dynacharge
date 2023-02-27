@@ -73,7 +73,8 @@ my $offset = 0.05;
 my $current = 6;
 
 # Variables for current power
-my $totalPower = 0;
+my $sunPowerAvailable = 0;
+my $gridUsage = 0;
 my $l1power = 0;
 my $l2power = 0;
 my $l3power = 0;
@@ -120,7 +121,8 @@ while (1) {
 		}
 		
 		# Determine total power
-		$totalPower = $l1power + $l2power + $l3power;
+		$gridUsage = $l1power + $l2power + $l3power;
+		$sunPowerAvailable = $gridUsage * - 1;
 		
 		if ($maxcurrent == 0) {
 			$current = 0;
@@ -154,14 +156,14 @@ while (1) {
 			} else {
 				# Determine netto energy balance when charging is active - Ignore this if phases just has been switched
 				if ($chargepointStatus =~ /charging/ && (midnight_seconds() - $phases_lastSwitched > 12)) {
-					DEBUG "Reading of energy balance: $totalPower kW";
+					DEBUG "Reading of energy balance: $sunPowerAvailable kW";
 					$chargingPower = ($nr_of_phases * $current * $voltage);
-					$totalPower = $totalPower + $chargingPower;
-					DEBUG "Netto energy balance (including current charging): $totalPower kW. Charging at $chargingPower kW";
+					$sunPowerAvailable = $sunPowerAvailable + $chargingPower;
+					DEBUG "Netto energy balance (including current charging): $sunPowerAvailable kW. Charging at $chargingPower kW";
 				}
 				
 				# Determine amount of phases
-				if ($totalPower > (0.0+$offset) && $totalPower < (4.0-$offset)) {
+				if ($sunPowerAvailable > (0.0+$offset) && $sunPowerAvailable < (4.0-$offset)) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
@@ -185,7 +187,7 @@ while (1) {
 							$phases_lastChecked = 0;
 						}
 					}
-				} elsif ($totalPower > (4.14+$offset)) {
+				} elsif ($sunPowerAvailable > (4.14+$offset)) {
 					if ($nr_of_phases != 3) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
@@ -212,13 +214,14 @@ while (1) {
 					INFO "Switching to one-phase charging (not set yet)";
 					set_nrOfPhases(1);
 				}
-				$current = int($totalPower / ($voltage * $nr_of_phases));
+				$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
 
 				$current = $maxcurrent if ($current > $maxcurrent);
 				$current =  0 if ($current < 6 && $nr_of_phases == 1);
 				$current =  6 if ($current < 6 && $nr_of_phases == 3);
+				$current =  0 if ($current < 3 && $nr_of_phases == 3);
 			}
-			INFO "$chargeMode | Current is now $current based on balance $totalPower kW with $nr_of_phases phase(s)";
+			INFO "$chargeMode | Current is now $current based on available sunpower: $sunPowerAvailable kW with $nr_of_phases phase(s) (current grid usage: $gridUsage)";
 		} elsif ($chargeMode =~ /offPeakOnly/) {
 			# Off-peak is 1, Normal = 2
 			if($tariff == 1) {
@@ -233,6 +236,9 @@ while (1) {
 			INFO "$chargeMode | Charging at $realistic_current A.";
 			set_nrOfPhases($preferred_nrPhases);
 			$current = $realistic_current;
+		} elsif ($chargeMode =~ /noCharging/) {
+			INFO "$chargeMode | Charging at 0 A.";
+			$current = 0;
 		} else {
 			INFO "Non valid chargemode selected ($chargeMode), reverting it to default 'sunOnly'. Valid values: sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect";
 			$mqtt->publish($chargeMode_topic, 'sunOnly');
@@ -253,27 +259,27 @@ sub mqtt_handler {
 		
 	if ($topic =~ /phase_currently_returned_l1/) {
 		return if ($data == 0); # Do not process empty values
-		$l1power = $data * 1;
+		$l1power = $data * - 1;
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_returned_l2/) {
 		return if ($data == 0); # Do not process empty values
-		$l2power = $data * 1;
+		$l2power = $data * - 1;
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_returned_l3/) {
 		return if ($data == 0); # Do not process empty values
-		$l3power = $data * 1;
+		$l3power = $data * - 1;
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_delivered_l1/) {
 		return if ($data == 0); # Do not process empty values
-		$l1power = $data * - 1;
+		$l1power = $data * 1;
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_delivered_l2/) {
 		return if ($data == 0); # Do not process empty values
-		$l2power = $data * - 1;
+		$l2power = $data * 1;
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_delivered_l3/) {
 		return if ($data == 0); # Do not process empty values
-		$l3power = $data * - 1;
+		$l3power = $data * 1;
 		$topicUpdated++;
 	} elsif ($topic =~ /boostperiod/) {
 		INFO "Setting boostperiod timer to $data seconds";
@@ -325,7 +331,7 @@ sub mqtt_handler {
 		return;
 	}
 	
-	DEBUG "Energy balance is now " . $totalPower . "kW";
+	DEBUG "Energy balance is now " . $sunPowerAvailable . "kW";
 }
 
 sub update_loadcurrent {
@@ -399,17 +405,17 @@ sub get_maximumCurrent {
 	if ($nr_of_phases == 1) {
 		$highestCurrent = $l1power;
 	} else {
-		if ($l1power <= $l2power && $l1power <= $l3power) {
+		if ($l1power >= $l2power && $l1power >= $l3power) {
 			$highestCurrent = $l1power;
-		} elsif ($l2power <= $l1power && $l2power <= $l3power) {
+		} elsif ($l2power >= $l1power && $l2power >= $l3power) {
 			$highestCurrent = $l2power;
-		} elsif ($l3power <= $l1power && $l3power <= $l2power) {
+		} elsif ($l3power >= $l1power && $l3power >= $l2power) {
 			$highestCurrent = $l3power;
 		} 
 	}
 	
 	# Calculate the highest current based on power
-	$highestCurrent = ($highestCurrent / $voltage) * -1;
+	$highestCurrent = ($highestCurrent / $voltage);
 	# Calculate the maximum charging current based on current usage and chargingpower
 	$newChargingCurrent = int($charging_current + ($mainfuse - $safetyMarge) - $highestCurrent);
 		
