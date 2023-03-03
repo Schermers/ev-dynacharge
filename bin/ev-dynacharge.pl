@@ -118,6 +118,9 @@ while (1) {
 	# Check if energy value has been uupdated, and only update if charger is in use
 	if ($topicUpdated >= 4 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
 		$topicUpdated = 0;
+		if ($chargepointStatus =~ /connected/) {
+			$current = 0;
+		}
 		# Determine total power
 		$gridUsage = $l1power + $l2power + $l3power;
 		$sunPowerAvailable = $gridUsage * - 1;
@@ -203,7 +206,7 @@ while (1) {
 						}
 					} else {
 						# Reset counter if current nr of phases is correct and timer was used
-						if($phases_lastChecked != 0){
+						if($phases_lastChecked != 0 && $chargepointStatus =~ /charging/){
 							$phases_lastChecked = 0;
 						}
 					}
@@ -226,7 +229,7 @@ while (1) {
 						}
 					} else {
 						# Reset counter if current nr of phases is correct and timer was used
-						if($phases_lastChecked != 0){
+						if($phases_lastChecked != 0 && $chargepointStatus =~ /charging/){
 							$phases_lastChecked = 0;
 						}
 					}
@@ -238,8 +241,8 @@ while (1) {
 
 				$current = $maxcurrent if ($current > $maxcurrent);
 				$current =  0 if ($current < 6 && $nr_of_phases == 1);
-				$current =  6 if ($current < 6 && $nr_of_phases == 3);
 				$current =  0 if ($current < 3 && $nr_of_phases == 3);
+				$current =  6 if ($current < 6 && $nr_of_phases == 3);
 			}
 			INFO "$chargeMode | Current is now $current based on available sunpower: $sunPowerAvailable kW with $nr_of_phases phase(s) (current grid usage: $gridUsage)";
 		} elsif ($chargeMode =~ /offPeakOnly/) {
@@ -268,7 +271,8 @@ while (1) {
 		# Update new current
 		update_loadcurrent($current);	
 	} else {
-		if ($nr_of_phases != 0) {
+		if ($nr_of_phases != 0 && $chargepointStatus =~ /available/) {
+			INFO "Reset number of phases to 0 (Current: $nr_of_phases)";
 			$nr_of_phases = 0;
 		}
 	}
