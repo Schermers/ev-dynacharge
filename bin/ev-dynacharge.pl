@@ -241,8 +241,11 @@ while (1) {
 
 				$current = $maxcurrent if ($current > $maxcurrent);
 				$current =  0 if ($current < 6 && $nr_of_phases == 1);
-				$current =  0 if ($current < 3 && $nr_of_phases == 3);
-				$current =  6 if ($current < 6 && $nr_of_phases == 3);
+				if ($current < 3 && $nr_of_phases == 3) {
+					$current =  0;
+				} elsif ($current < 6 && $nr_of_phases == 3) {
+					$current =  6;
+				}
 			}
 			INFO "$chargeMode | Current is now $current based on available sunpower: $sunPowerAvailable kW with $nr_of_phases phase(s) (current grid usage: $gridUsage)";
 		} elsif ($chargeMode =~ /offPeakOnly/) {
