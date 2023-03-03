@@ -64,6 +64,8 @@ $mqtt->subscribe('dsmr/reading/phase_currently_returned_l3',  \&mqtt_handler);
 $mqtt->subscribe('dsmr/reading/phase_currently_delivered_l1',  \&mqtt_handler);
 $mqtt->subscribe('dsmr/reading/phase_currently_delivered_l2',  \&mqtt_handler);
 $mqtt->subscribe('dsmr/reading/phase_currently_delivered_l3',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/electricity_currently_delivered',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/electricity_currently_returned',  \&mqtt_handler);
 
 $mqtt->subscribe('dsmr/meter-stats/electricity_tariff',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/chargepointStatus',  \&mqtt_handler);
@@ -75,9 +77,12 @@ my $current = 6;
 # Variables for current power
 my $sunPowerAvailable = 0;
 my $gridUsage = 0;
+my $totalPower = 0;
 my $l1power = 0;
 my $l2power = 0;
 my $l3power = 0;
+my $difPerc = 0;
+my $inSync = 0;
 
 # Charging limits
 my $mainfuse = 25;
@@ -111,18 +116,33 @@ my $timestamp = 0;
 while (1) {
 	$mqtt->tick();
 	# Check if energy value has been uupdated, and only update if charger is in use
-	if ($topicUpdated >= 3 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
+	if ($topicUpdated >= 4 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
 		$topicUpdated = 0;
+		# Determine total power
+		$gridUsage = $l1power + $l2power + $l3power;
+		$sunPowerAvailable = $gridUsage * - 1;
+		$difPerc = $gridUsage/$totalPower*100;
+		if ($difPerc < 97 || $difPerc > 103) {
+			if ($inSync == 0){
+				$topicUpdated++;
+				INFO "MQTT readings not in sync with total power. Adding value to topicUpdate";
+			}
+			INFO "Phase power: $gridUsage is NOT the same as totalPower: $totalPower (difference: $difPerc %)";
+			$gridUsage = $totalPower;
+		} else {
+			INFO "Phase power: $gridUsage is the same as totalPower: $totalPower (difference: $difPerc %)";
+			if ($inSync == 0 && $difPerc == 100){
+				INFO "MQTT readings are now in sync with total power.";
+				$inSync = 1;
+			}
+		}
+		
 		# Determine maximum load to avoid switch of the main fuse
 		if($chargepointStatus =~ /charging/) {
 			$realistic_current = get_maximumCurrent($preferred_current, $current);
 		} else {
 			$realistic_current = get_maximumCurrent($preferred_current, 0);
 		}
-		
-		# Determine total power
-		$gridUsage = $l1power + $l2power + $l3power;
-		$sunPowerAvailable = $gridUsage * - 1;
 		
 		if ($maxcurrent == 0) {
 			$current = 0;
@@ -247,6 +267,10 @@ while (1) {
 		
 		# Update new current
 		update_loadcurrent($current);	
+	} else {
+		if ($nr_of_phases != 0) {
+			$nr_of_phases = 0;
+		}
 	}
 	sleep(1);
 }
@@ -271,15 +295,23 @@ sub mqtt_handler {
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_delivered_l1/) {
 		return if ($data == 0); # Do not process empty values
-		$l1power = $data * 1;
+		$l1power = $data;
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_delivered_l2/) {
 		return if ($data == 0); # Do not process empty values
-		$l2power = $data * 1;
+		$l2power = $data;
 		$topicUpdated++;
 	} elsif ($topic =~ /phase_currently_delivered_l3/) {
 		return if ($data == 0); # Do not process empty values
-		$l3power = $data * 1;
+		$l3power = $data;
+		$topicUpdated++;
+	} elsif ($topic =~ /electricity_currently_delivered/) {
+		return if ($data == 0); # Do not process empty values
+		$totalPower = $data;
+		$topicUpdated++;
+	} elsif ($topic =~ /electricity_currently_returned/) {
+		return if ($data == 0); # Do not process empty values
+		$totalPower = $data * - 1;
 		$topicUpdated++;
 	} elsif ($topic =~ /boostperiod/) {
 		INFO "Setting boostperiod timer to $data seconds";
