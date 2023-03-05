@@ -71,8 +71,11 @@ $mqtt->subscribe('dsmr/meter-stats/electricity_tariff',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/chargepointStatus',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/voltage',  \&mqtt_handler);
 $mqtt->subscribe($timers_topic,  \&mqtt_handler);
+# Vars send to charger
 my $offset = 0.05;
-my $current = 6;
+my $current = 0;
+my $previous_current = 0;
+my $curren_lastSet = time() - 30;
 
 # Variables for current power
 my $sunPowerAvailable = 0;
@@ -107,7 +110,6 @@ my $phases_counterLimit = 300;
 my $chargingPower = 0;
 my $voltage = 0.23;
 my $topicUpdated = 0;
-my $topic2Update = 0;
 my $resetOnDisconnect = 0;
 
 my $chargeMode = 'sunOnly'; # sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect
@@ -118,6 +120,7 @@ while (1) {
 	# Check if energy value has been uupdated, and only update if charger is in use
 	if ($topicUpdated >= 4 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
 		$topicUpdated = 0;
+		$previous_current = $current;
 		if ($chargepointStatus =~ /connected/) {
 			$current = 0;
 		}
@@ -272,7 +275,20 @@ while (1) {
 		}
 		
 		# Update new current
-		update_loadcurrent($current);	
+		if($previous_current == $current && (time()-$curren_lastSet) < 30) {
+			# Do nothing
+			INFO "Current is update within last 30 seconds. ignore this one.";
+		} elsif((time()-$curren_lastSet) < 5) {
+			# Give the charger time to react on the previous update
+		} elsif ($current != 0 && $previous_current != 0 && $chargepointStatus =~ /connected/) {
+			# Do nothing
+			INFO "Changed to charging, status still connected, wait until its updated";
+		} else {
+			INFO "Updating current from $previous_current to $current";
+			$curren_lastSet = time();
+			update_loadcurrent($current);	
+		}
+
 	} else {
 		if ($nr_of_phases != 0 && $chargepointStatus =~ /available/) {
 			INFO "Reset number of phases to 0 (Current: $nr_of_phases)";
