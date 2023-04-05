@@ -54,6 +54,8 @@ my $nr_phases_topic = 'chargepoint/nr_of_phases';
 my $preferredCurrent_topic = 'chargepoint/config/preferredcurrent';
 my $preferredNrPhases_topic = 'chargepoint/config/preferrednrofphases';
 my $chargeMode_topic = 'chargepoint/config/chargemode';
+my $log_topic = 'chargepoint/';
+my $details_topic = 'chargepoint/details';
 
 my $maxcurrent = 16;
 my $nr_of_phases = 0;
@@ -122,7 +124,7 @@ while (1) {
 		$topicUpdated = 0;
 		$previous_current = $current;
 		if ($chargepointStatus =~ /connected/) {
-			$current = 0;
+			#$current = 0;
 		}
 		# Determine total power
 		$gridUsage = $l1power + $l2power + $l3power;
@@ -189,7 +191,8 @@ while (1) {
 				}
 				
 				# Determine amount of phases
-				if ($sunPowerAvailable > (0.0+$offset) && $sunPowerAvailable < (4.0-$offset)) {
+				# if ($sunPowerAvailable > (0.0+$offset) && $sunPowerAvailable < (4.0-$offset)) {
+				if ($sunPowerAvailable < (4.0-$offset)) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
@@ -240,12 +243,18 @@ while (1) {
 					INFO "Switching to one-phase charging (not set yet)";
 					set_nrOfPhases(1);
 				}
-				$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
+				
+				# Keep current as is if started charging
+				if ($current != 0 && $chargepointStatus =~ /connected/) {
+					# Keep current as is
+				} else {
+					$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
+				}
 
 				$current = $maxcurrent if ($current > $maxcurrent);
 				$current =  0 if ($current < 6 && $nr_of_phases == 1);
 				if ($current < 3 && $nr_of_phases == 3) {
-					$current =  0;
+					$current =  6;
 				} elsif ($current < 6 && $nr_of_phases == 3) {
 					$current =  6;
 				}
@@ -280,19 +289,19 @@ while (1) {
 			INFO "Current is update within last 30 seconds. ignore this one.";
 		} elsif((time()-$curren_lastSet) < 5) {
 			# Give the charger time to react on the previous update
-		} elsif ($current != 0 && $previous_current != 0 && $chargepointStatus =~ /connected/) {
-			# Do nothing
-			INFO "Changed to charging, status still connected, wait until its updated";
 		} else {
 			INFO "Updating current from $previous_current to $current";
 			$curren_lastSet = time();
 			update_loadcurrent($current);	
+			update_details();
 		}
 
 	} else {
-		if ($nr_of_phases != 0 && $chargepointStatus =~ /available/) {
-			INFO "Reset number of phases to 0 (Current: $nr_of_phases)";
-			$nr_of_phases = 0;
+		if ($nr_of_phases != 1 && $chargepointStatus =~ /available/) {
+			INFO "Reset number of phases to 1 (Current: $nr_of_phases)";
+			set_nrOfPhases(1);
+			#$nr_of_phases = 0;
+			update_details();
 		}
 	}
 	sleep(1);
@@ -387,6 +396,26 @@ sub mqtt_handler {
 	}
 	
 	DEBUG "Energy balance is now " . $sunPowerAvailable . "kW";
+}
+
+# Function to update EV details
+sub update_details {
+	my $details = {
+		'current'   => $current,
+		'nr_of_phases' => $nr_of_phases,
+		'previous_current' => $previous_current,
+		'sunPowerAvailable' => $sunPowerAvailable,
+		'chargingPower' => $chargingPower,
+		'gridUsage' => $gridUsage,
+		'realistic_current' => $realistic_current,
+		'phases_counter' => $phases_counter,
+		'phases_lastChecked' => $phases_lastChecked,
+		'curren_lastSet' => $curren_lastSet
+	};
+	
+	# Create the json struct
+	my $jsonDetails = encode_json($details);
+	$mqtt->publish($details_topic, $jsonDetails);
 }
 
 sub update_loadcurrent {
