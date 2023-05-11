@@ -131,14 +131,14 @@ while (1) {
 		if ($difPerc < 97 || $difPerc > 103) {
 			if ($inSync == 0){
 				$topicUpdated++;
-				INFO "MQTT readings not in sync with total power. Adding value to topicUpdate";
+				INFO "WARNING | MQTT readings not in sync with total power. Adding value to topicUpdate";
 			}
-			INFO "Phase power: $gridUsage is NOT the same as totalPower: $totalPower (difference: $difPerc %)";
+			INFO "WARNING | Sum phases: $gridUsage totalPower: $totalPower (difference: $difPerc %)";
 			$gridUsage = $totalPower;
 		} else {
-			INFO "Phase power: $gridUsage is the same as totalPower: $totalPower (difference: $difPerc %)";
+			#INFO "Phase power: $gridUsage is the same as totalPower: $totalPower (difference: $difPerc %)";
 			if ($inSync == 0 && $difPerc == 100){
-				INFO "MQTT readings are now in sync with total power.";
+				#INFO "MQTT readings are now in sync with total power.";
 				$inSync = 1;
 			}
 		}
@@ -230,7 +230,7 @@ while (1) {
 							set_nrOfPhases(3);
 						}
 						else {
-							INFO "Wait for switch to 3 phases. Current counter: $phases_counter s (of $phases_counterLimit s)";
+							#INFO "Wait for switch to 3 phases. Current counter: $phases_counter s (of $phases_counterLimit s)";
 						}
 					} else {
 						# Reset counter if current nr of phases is correct and timer was used
@@ -239,7 +239,7 @@ while (1) {
 						}
 					}
 				} elsif ($nr_of_phases == 0) {
-					INFO "Switching to one-phase charging (not set yet)";
+					#INFO "Switching to one-phase charging (not set yet)";
 					set_nrOfPhases(1);
 				}
 				
@@ -259,15 +259,15 @@ while (1) {
 					$current =  6;
 				}
 			}
-			INFO "$chargeMode | Current is now $current based on available sunpower: $sunPowerAvailable kW with $nr_of_phases phase(s) (current grid usage: $gridUsage)";
+			#INFO "$chargeMode | Current is now $current based on available sunpower: $sunPowerAvailable kW with $nr_of_phases phase(s) (current grid usage: $gridUsage)";
 		} elsif ($chargeMode =~ /offPeakOnly/) {
 			# Off-peak is 1, Normal = 2
 			if($tariff == 1) {
-				INFO "$chargeMode selected, charging at $realistic_current A since it is off-Peak";
+				#INFO "$chargeMode selected, charging at $realistic_current A since it is off-Peak";
 				$current = $realistic_current;
 				set_nrOfPhases($preferred_nrPhases);
 			} else {
-				INFO "$chargeMode selected, currently it is normal rate. No charging.";
+				#INFO "$chargeMode selected, currently it is normal rate. No charging.";
 				$current = 0;
 			}
 		} elsif ($chargeMode =~ /boostUntillDisconnect/) {
@@ -275,7 +275,7 @@ while (1) {
 			set_nrOfPhases($preferred_nrPhases);
 			$current = $realistic_current;
 		} elsif ($chargeMode =~ /noCharging/) {
-			INFO "$chargeMode | Charging at 0 A.";
+			#INFO "$chargeMode | Charging at 0 A.";
 			$current = 0;
 		} else {
 			INFO "Non valid chargemode selected ($chargeMode), reverting it to default 'sunOnly'. Valid values: sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect";
@@ -288,13 +288,14 @@ while (1) {
 			#Phases just switched, wait before updating the current
 		} elsif($previous_current == $current && (time()-$curren_lastSet) < 30) {
 			# Do nothing
-			INFO "Current is update within last 30 seconds. ignore this one.";
+			#INFO "Current is update within last 30 seconds. ignore this one.";
 		} elsif((time()-$curren_lastSet) < 5) {
 			# Give the charger time to react on the previous update
 		} else {
-			INFO "Updating current from $previous_current to $current";
+			#INFO "Updating current from $previous_current to $current";
 			$curren_lastSet = time();
-			update_loadcurrent($current);	
+			INFO "$chargeMode | $current A | Grid: $gridUsage | SunPower: $sunPowerAvailable | Max current: $realistic_current | Phases switched: $phases_lastSwitched | Phases counter: $phases_counter | #Phases: $nr_of_phases | Current last set: $curren_lastSet | Volt: $voltage";
+			update_loadcurrent($current);
 			update_details();
 		}
 
@@ -394,7 +395,7 @@ sub mqtt_handler {
 	} elsif ($topic =~ /voltage/) {
 		return if ($data == 0); # Do not process empty values
 		$voltage = ($data / 1000);
-		INFO "Current voltage: $voltage"
+		#INFO "Current voltage: $voltage"
 	} else {
 		WARN "Invalid message received from topic " . $topic;
 		return;
@@ -515,8 +516,8 @@ sub get_maximumCurrent {
 	# Limit the charging current if it is lower than the minimum current (6A)
 	$newChargingCurrent = 0 if ($newChargingCurrent < 6);
 	
-	INFO "Highest load: $highestCurrent A, current chargingcurrent: $charging_current A";
-	INFO "New charging current: $newChargingCurrent based on current load: L1: $l1power L2: $l2power L3: $l3power";
+	#INFO "Highest load: $highestCurrent A, current chargingcurrent: $charging_current A";
+	#INFO "New charging current: $newChargingCurrent based on current load: L1: $l1power L2: $l2power L3: $l3power";
 	return $newChargingCurrent;
 }
 
