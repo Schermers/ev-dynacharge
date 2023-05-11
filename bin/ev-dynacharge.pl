@@ -105,8 +105,8 @@ my $chargepointStatus = 'charging';
 # Vars for phase switching
 my $phases_counter = 0;
 my $phases_lastChecked = 1;
-my $phases_lastSwitched = 0;
-my $phases_counterLimit = 300;
+my $phases_lastSwitched = time() - 3600; # Set timer to an hour ago
+my $phases_counterLimit = 300; # Limit before changing phases
 
 
 my $chargingPower = 0;
@@ -116,6 +116,7 @@ my $resetOnDisconnect = 0;
 
 my $chargeMode = 'sunOnly'; # sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect
 my $timestamp = 0;
+my $timer_startedCharging = time() - 60; # Set timer to a minute ago
 
 while (1) {
 	$mqtt->tick();
@@ -123,12 +124,9 @@ while (1) {
 	if ($topicUpdated >= 4 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
 		$topicUpdated = 0;
 		$previous_current = $current;
-		if ($chargepointStatus =~ /connected/) {
-			#$current = 0;
-		}
+
 		# Determine total power
 		$gridUsage = $l1power + $l2power + $l3power;
-		$sunPowerAvailable = $gridUsage * - 1;
 		$difPerc = $gridUsage/$totalPower*100;
 		if ($difPerc < 97 || $difPerc > 103) {
 			if ($inSync == 0){
@@ -144,6 +142,7 @@ while (1) {
 				$inSync = 1;
 			}
 		}
+		$sunPowerAvailable = $gridUsage * - 1;
 		
 		# Determine maximum load to avoid switch of the main fuse
 		if($chargepointStatus =~ /charging/) {
@@ -183,7 +182,7 @@ while (1) {
 				set_nrOfPhases($preferred_nrPhases);
 			} else {
 				# Determine netto energy balance when charging is active - Ignore this if phases just has been switched
-				if ($chargepointStatus =~ /charging/ && (midnight_seconds() - $phases_lastSwitched > 12)) {
+				if ($chargepointStatus =~ /charging/ && (time() - $phases_lastSwitched > 12)) {
 					DEBUG "Reading of energy balance: $sunPowerAvailable kW";
 					$chargingPower = ($nr_of_phases * $current * $voltage);
 					$sunPowerAvailable = $sunPowerAvailable + $chargingPower;
@@ -197,11 +196,11 @@ while (1) {
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
-							$phases_lastChecked = midnight_seconds();
+							$phases_lastChecked = time();
 							$phases_counter = 0;
 						}
 						# Update counter
-						$phases_counter = midnight_seconds() - $phases_lastChecked;
+						$phases_counter = time() - $phases_lastChecked;
 
 						# Switch if limit is reached to switch in nr of phases
 						if ($phases_counter > $phases_counterLimit || $nr_of_phases == 0) {
@@ -220,11 +219,11 @@ while (1) {
 					if ($nr_of_phases != 3) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
-							$phases_lastChecked = midnight_seconds();
+							$phases_lastChecked = time();
 							$phases_counter = 0;
 						}
 						# Update counter
-						$phases_counter = midnight_seconds() - $phases_lastChecked;
+						$phases_counter = time() - $phases_lastChecked;
 						
 						# Switch if limit is reached to switch in nr of phases
 						if($phases_counter > $phases_counterLimit || $nr_of_phases == 0) {
@@ -245,7 +244,8 @@ while (1) {
 				}
 				
 				# Keep current as is if started charging
-				if ($current != 0 && $chargepointStatus =~ /connected/) {
+				# if ($chargepointStatus =~ /connected/ && (time() - $timer_startedCharging) < 30) {
+				if ((time() - $timer_startedCharging) < 30) {
 					# Keep current as is
 				} else {
 					$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
@@ -284,7 +284,9 @@ while (1) {
 		}
 		
 		# Update new current
-		if($previous_current == $current && (time()-$curren_lastSet) < 30) {
+		if(time() - $phases_lastSwitched <= 12) {
+			#Phases just switched, wait before updating the current
+		} elsif($previous_current == $current && (time()-$curren_lastSet) < 30) {
 			# Do nothing
 			INFO "Current is update within last 30 seconds. ignore this one.";
 		} elsif((time()-$curren_lastSet) < 5) {
@@ -383,6 +385,9 @@ sub mqtt_handler {
 				$mqtt->publish($preferredNrPhases_topic, 3);
 			}
 		}
+		elsif ($chargepointStatus =~ /charging/) {
+			$timer_startedCharging = time();
+		}
 	} elsif ($topic =~ /chargemode/) {
 		$chargeMode = $data;
 		INFO "Chargepoint modus: $data";
@@ -476,7 +481,7 @@ sub set_nrOfPhases {
 		$nr_of_phases = $arg1;
 		$mqtt->publish($nr_phases_topic, $nr_of_phases);
 		$phases_counter = 0;
-		$phases_lastSwitched = midnight_seconds();
+		$phases_lastSwitched = time();
 	}
 }
 
@@ -495,7 +500,7 @@ sub get_maximumCurrent {
 			$highestCurrent = $l2power;
 		} elsif ($l3power >= $l1power && $l3power >= $l2power) {
 			$highestCurrent = $l3power;
-		} 
+		}
 	}
 	
 	# Calculate the highest current based on power
