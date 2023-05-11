@@ -184,7 +184,7 @@ while (1) {
 				# Determine netto energy balance when charging is active - Ignore this if phases just has been switched
 				if ($chargepointStatus =~ /charging/ && (time() - $phases_lastSwitched > 12)) {
 					DEBUG "Reading of energy balance: $sunPowerAvailable kW";
-					$chargingPower = ($nr_of_phases * $current * $voltage);
+					$chargingPower = ($nr_of_phases * $previous_current * $voltage);
 					$sunPowerAvailable = $sunPowerAvailable + $chargingPower;
 					DEBUG "Netto energy balance (including current charging): $sunPowerAvailable kW. Charging at $chargingPower kW";
 				}
@@ -245,7 +245,7 @@ while (1) {
 				
 				# Keep current as is if started charging
 				# if ($chargepointStatus =~ /connected/ && (time() - $timer_startedCharging) < 30) {
-				if ((time() - $timer_startedCharging) < 30) {
+				if ((time() - $timer_startedCharging) < 15) {
 					# Keep current as is
 				} else {
 					$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
@@ -286,11 +286,17 @@ while (1) {
 		# Update new current
 		if(time() - $phases_lastSwitched <= 12) {
 			#Phases just switched, wait before updating the current
+			$current = $previous_current
+		} elsif($chargepointStatus =~ /connected/ && $previous_current != 0 && $current == 0 && (time()-$curren_lastSet) < 60) {
+			# Charging still starting, wait for completion
+			$current = $previous_current
 		} elsif($previous_current == $current && (time()-$curren_lastSet) < 30) {
 			# Do nothing
 			#INFO "Current is update within last 30 seconds. ignore this one.";
+			$current = $previous_current
 		} elsif((time()-$curren_lastSet) < 5) {
 			# Give the charger time to react on the previous update
+			$current = $previous_current
 		} else {
 			#INFO "Updating current from $previous_current to $current";
 			$curren_lastSet = time();
