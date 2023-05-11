@@ -133,12 +133,16 @@ while (1) {
 				$topicUpdated++;
 				INFO "WARNING | MQTT readings not in sync with total power. Adding value to topicUpdate";
 			}
-			INFO "WARNING | Sum phases: $gridUsage totalPower: $totalPower (difference: $difPerc %)";
+
+			# Only print if usage is high enough to report. Otherwise the differences will be too big
+			if($gridUsage < -500 && $gridUsage > 500) {
+				INFO "WARNING | Sum phases: $gridUsage totalPower: $totalPower (difference: $difPerc %)";
+			}
 			$gridUsage = $totalPower;
 		} else {
 			#INFO "Phase power: $gridUsage is the same as totalPower: $totalPower (difference: $difPerc %)";
 			if ($inSync == 0 && $difPerc == 100){
-				#INFO "MQTT readings are now in sync with total power.";
+				INFO "MQTT readings are now in sync with total power.";
 				$inSync = 1;
 			}
 		}
@@ -422,6 +426,7 @@ sub update_details {
 		'realistic_current' => $realistic_current,
 		'phases_counter' => $phases_counter,
 		'phases_lastChecked' => $phases_lastChecked,
+		'phases_lastSwitched' => $phases_lastSwitched,
 		'curren_lastSet' => $curren_lastSet
 	};
 	
