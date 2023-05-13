@@ -291,8 +291,8 @@ while (1) {
 		if(time() - $phases_lastSwitched <= 12) {
 			#Phases just switched, wait before updating the current
 			$current = $previous_current
-		} elsif($chargepointStatus =~ /connected/ && $previous_current != 0 && $current == 0 && (time()-$curren_lastSet) < 60) {
-			# Charging still starting, wait for completion
+		} elsif($chargepointStatus =~ /connected/ && $previous_current != 0 && $current == 0 && (time()-$curren_lastSet) > 2 && (time()-$curren_lastSet) < 60) {
+			# Charging still starting, wait for completion - update immediatly the first time the phase will be switched for correct value
 			$current = $previous_current
 		} elsif($previous_current == $current && (time()-$curren_lastSet) < 30) {
 			# Do nothing
@@ -406,6 +406,8 @@ sub mqtt_handler {
 		return if ($data == 0); # Do not process empty values
 		$voltage = ($data / 1000);
 		#INFO "Current voltage: $voltage"
+	} elsif ($topic =~ /phaseSwitchDelay/) {
+		$phases_counterLimit = $data;
 	} else {
 		WARN "Invalid message received from topic " . $topic;
 		return;
