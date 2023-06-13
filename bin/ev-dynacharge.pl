@@ -291,7 +291,7 @@ while (1) {
 		if(time() - $phases_lastSwitched <= 12) {
 			#Phases just switched, wait before updating the current
 			$current = $previous_current
-		} elsif($chargepointStatus =~ /connected/ && $previous_current != 0 && $current == 0 && (time()-$curren_lastSet) > 2 && (time()-$curren_lastSet) < 60) {
+		} elsif($chargepointStatus =~ /connected/ && $previous_current != 0 && $current == 0 && (time()-$curren_lastSet) < 60) {
 			# Charging still starting, wait for completion - update immediatly the first time the phase will be switched for correct value
 			$current = $previous_current
 		} elsif($previous_current == $current && (time()-$curren_lastSet) < 30) {
