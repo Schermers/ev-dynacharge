@@ -490,7 +490,7 @@ sub midnight_seconds {
 
 sub set_nrOfPhases {
 	my ( $arg1 ) = @_;
-	if ($arg1 != $nr_of_phases) {
+	if ($arg1 != $nr_of_phases && (time() - $phases_lastSwitched > 60)) {
 		INFO "Switching to $arg1 phase charging";
 		$nr_of_phases = $arg1;
 		$mqtt->publish($nr_phases_topic, $nr_of_phases);
