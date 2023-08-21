@@ -102,6 +102,8 @@ my $realistic_current = 0;
 my $boostmode_timer = 0;
 my $preferred_current = 16;
 my $preferred_nrPhases = 3;
+my $gridReturnCoverage = 0.50; # 0.00 to 1.00
+my $gridReturnCoverageToStartupAsWell = 'on'
 my $chargepointStatus = 'charging';
 
 # Vars for phase switching
@@ -218,7 +220,8 @@ while (1) {
 				
 				# Determine amount of phases
 				# if ($sunPowerAvailable > (0.0+$offset) && $sunPowerAvailable < (4.0-$offset)) {
-				if ($sunPowerAvailable < (4.0-$offset)) {
+				#if ($sunPowerAvailable < (4.0-$offset)) {
+				if ($sunPowerAvailable < ((4.0-$offset)-($voltage*$gridReturnCoverage))) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
@@ -242,7 +245,7 @@ while (1) {
 							$phases_lastChecked = 0;
 						}
 					}
-				} elsif ($sunPowerAvailable > (4.14+$offset)) {
+				} elsif ($sunPowerAvailable > ((4.14+$offset)-($voltage*$gridReturnCoverage))) {
 					if ($nr_of_phases != 3) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
@@ -275,11 +278,20 @@ while (1) {
 				if ((time() - $timer_startedCharging) < 15) {
 					# Keep current as is
 				} else {
-					$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
+					#$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
+					$current = int(($sunPowerAvailable+($voltage * $nr_of_phases * $gridReturnCoverage)) / ($voltage * $nr_of_phases));
 				}
 
 				$current = $maxcurrent if ($current > $maxcurrent);
-				$current =  0 if ($current < 6 && $nr_of_phases == 1);
+				#$current =  0 if ($current < 6 && $nr_of_phases == 1);
+				if($current < 6 && $nr_of_phases ==1) {
+					if($gridReturnCoverageToStartupAsWell == 'on') {
+						#$current = int($current
+					}
+					else {
+						$current =  0
+					}
+				}
 				if ($current < 3 && $nr_of_phases == 3) {
 					$current =  6;
 				} elsif ($current < 6 && $nr_of_phases == 3) {
@@ -412,6 +424,13 @@ sub mqtt_handler {
 			INFO "Preferred nr of phases is now $preferred_nrPhases";
 		} else {
 			WARN "Refuse to set invalid phases number: '$data'";
+		}
+	} elsif ($topic =~ /applyReturnToGridToStartUpAsWell/) {
+		if ($data == 'on' || $data == 'off') {
+			$gridReturnCoverageToStartupAsWell = $data;
+			INFO "Apply return to Grid coverage to startup as well: $gridReturnCoverageToStartupAsWell";
+		} else {
+			WARN "Refuse to set invalid gridReturnCoverageToStartupAsWell: '$data'";
 		}
 	} elsif ($topic =~ /electricity_tariff/) {
 		return if ($data == 0); # Do not process empty values
