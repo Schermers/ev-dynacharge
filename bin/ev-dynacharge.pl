@@ -103,7 +103,7 @@ my $boostmode_timer = 0;
 my $preferred_current = 16;
 my $preferred_nrPhases = 3;
 my $gridReturnCoverage = 0.50; # 0.00 to 1.00
-my $gridReturnCoverageToStartupAsWell = 'on'
+my $gridReturnCoverageToStartupAsWell = 'on';
 my $chargepointStatus = 'charging';
 
 # Vars for phase switching
@@ -152,7 +152,11 @@ while (1) {
 		$gridUsage = $l1power + $l2power + $l3power;
 
 		# Difference
-		$difPerc = $gridUsage/$totalPower*100;
+		if($gridUsage != 0) {
+			$difPerc = $gridUsage/$totalPower*100;
+		} else {
+			$difPerc = 0;
+		}
 		if ($difPerc < 97 || $difPerc > 103) {
 			if ($inSync == 0){
 				$topicUpdated++;
@@ -221,7 +225,7 @@ while (1) {
 				# Determine amount of phases
 				# if ($sunPowerAvailable > (0.0+$offset) && $sunPowerAvailable < (4.0-$offset)) {
 				#if ($sunPowerAvailable < (4.0-$offset)) {
-				if ($sunPowerAvailable < ((4.0-$offset)-($voltage*$gridReturnCoverage))) {
+				if ($sunPowerAvailable < (4.0-$offset)) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
@@ -245,7 +249,7 @@ while (1) {
 							$phases_lastChecked = 0;
 						}
 					}
-				} elsif ($sunPowerAvailable > ((4.14+$offset)-($voltage*$gridReturnCoverage))) {
+				} elsif ($sunPowerAvailable > (4.14+$offset)) {
 					if ($nr_of_phases != 3) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
@@ -283,13 +287,20 @@ while (1) {
 				}
 
 				$current = $maxcurrent if ($current > $maxcurrent);
-				#$current =  0 if ($current < 6 && $nr_of_phases == 1);
-				if($current < 6 && $nr_of_phases ==1) {
-					if($gridReturnCoverageToStartupAsWell == 'on') {
-						#$current = int($current
+				#$current = 0 if ($current < 6 && $nr_of_phases == 1);
+				# Calculate current if coverage is also applied to startup power
+				if($current < 6 && $nr_of_phases == 1) {
+					if($gridReturnCoverageToStartupAsWell =~ '/on/') {
+						$current = ($current / (1.0 - $gridReturnCoverage));
+						
+						# Apply 0 if it is still lower than 6
+						$current = 0 if ($current < 6);
+						
+						# avoid getting bigger than minimum
+						$current = 6 if ($current >= 6);
 					}
 					else {
-						$current =  0
+						$current = 0;
 					}
 				}
 				if ($current < 3 && $nr_of_phases == 3) {
@@ -426,7 +437,7 @@ sub mqtt_handler {
 			WARN "Refuse to set invalid phases number: '$data'";
 		}
 	} elsif ($topic =~ /applyReturnToGridToStartUpAsWell/) {
-		if ($data == 'on' || $data == 'off') {
+		if ($data =~ '/on/' || $data =~ '/off/') {
 			$gridReturnCoverageToStartupAsWell = $data;
 			INFO "Apply return to Grid coverage to startup as well: $gridReturnCoverageToStartupAsWell";
 		} else {
