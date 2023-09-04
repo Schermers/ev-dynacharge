@@ -152,7 +152,7 @@ while (1) {
 		$gridUsage = $l1power + $l2power + $l3power;
 
 		# Difference
-		if($gridUsage != 0) {
+		if($gridUsage != 0 && $totalPower != 0) {
 			$difPerc = $gridUsage/$totalPower*100;
 		} else {
 			$difPerc = 0;
