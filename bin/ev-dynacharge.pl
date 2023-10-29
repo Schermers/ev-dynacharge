@@ -416,14 +416,14 @@ sub mqtt_handler {
 		INFO "Setting boostperiod timer to $data seconds";
 		$boostmode_timer = $data;
 	} elsif ($topic =~ /maxcurrent/) {
-		if ($data > 0 && $data < 16) {
+		if ($data > 0 && $data <= 16) {
 			$maxcurrent = $data;
 			INFO "Maximum current is now $maxcurrent A";
 		} else {
 			WARN "Refuse to set invalid maximum current: '$data'";
 		}
 	} elsif ($topic =~ /preferredcurrent/) {
-		if ($data > 0 && $data < 16) {
+		if ($data > 0 && $data <= 16) {
 			$preferred_current = $data;
 			INFO "Preferred current is now $preferred_current A";
 		} else {
