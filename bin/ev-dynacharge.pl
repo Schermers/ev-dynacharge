@@ -100,8 +100,8 @@ my $realistic_current = 0;
 
 # Configurable variables through MQTT
 my $boostmode_timer = 0;
-my $preferred_current = 16;
-my $preferred_nrPhases = 3;
+my $preferred_max_current = 16;
+my $preferred_max_nrPhases = 3;
 my $gridReturnCoverage = 0.50; # 0.00 to 1.00
 my $gridReturnCoverageToStartupAsWell = 'on';
 my $chargepointStatus = 'charging';
@@ -179,9 +179,9 @@ while (1) {
 		
 		# Determine maximum load to avoid switch of the main fuse
 		if($chargepointStatus =~ /charging/) {
-			$realistic_current = get_maximumCurrent($preferred_current, $current);
+			$realistic_current = get_maximumCurrent($preferred_max_current, $current);
 		} else {
-			$realistic_current = get_maximumCurrent($preferred_current, 0);
+			$realistic_current = get_maximumCurrent($preferred_max_current, 0);
 		}
 		
 		if ($maxcurrent == 0) {
@@ -212,7 +212,7 @@ while (1) {
 			# 11040 max
 			if ($tariff == 1 && $chargeMode =~ /sunAndOffPeak/) {
 				$current = $realistic_current;
-				set_nrOfPhases($preferred_nrPhases);
+				set_nrOfPhases($preferred_max_nrPhases);
 			} else {
 				# Determine netto energy balance when charging is active - Ignore this if phases just has been switched
 				if ($chargepointStatus =~ /charging/ && (time() - $phases_lastSwitched > 12)) {
@@ -225,7 +225,7 @@ while (1) {
 				# Determine amount of phases
 				# if ($sunPowerAvailable > (0.0+$offset) && $sunPowerAvailable < (4.0-$offset)) {
 				#if ($sunPowerAvailable < (4.0-$offset)) {
-				if ($sunPowerAvailable < (4.0-$offset)) {
+				if ($sunPowerAvailable < (4.0-$offset) or $preferred_max_nrPhases == 1) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
@@ -285,7 +285,11 @@ while (1) {
 					#$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
 					$current = int(($sunPowerAvailable+($voltage * $nr_of_phases * $gridReturnCoverage)) / ($voltage * $nr_of_phases));
 				}
+				
+				# Apply max preffered current
+				$current = $preferred_max_current if ($current > $preferred_max_current);
 
+				# Do not charge mor than allowed
 				$current = $maxcurrent if ($current > $maxcurrent);
 				#$current = 0 if ($current < 6 && $nr_of_phases == 1);
 				# Calculate current if coverage is also applied to startup power
@@ -315,14 +319,14 @@ while (1) {
 			if($tariff == 1) {
 				#INFO "$chargeMode selected, charging at $realistic_current A since it is off-Peak";
 				$current = $realistic_current;
-				set_nrOfPhases($preferred_nrPhases);
+				set_nrOfPhases($preferred_max_nrPhases);
 			} else {
 				#INFO "$chargeMode selected, currently it is normal rate. No charging.";
 				$current = 0;
 			}
 		} elsif ($chargeMode =~ /boostUntillDisconnect/) {
 			INFO "$chargeMode | Charging at $realistic_current A.";
-			set_nrOfPhases($preferred_nrPhases);
+			set_nrOfPhases($preferred_max_nrPhases);
 			$current = $realistic_current;
 		} elsif ($chargeMode =~ /noCharging/) {
 			#INFO "$chargeMode | Charging at 0 A.";
@@ -424,15 +428,15 @@ sub mqtt_handler {
 		}
 	} elsif ($topic =~ /preferredcurrent/) {
 		if ($data > 0 && $data <= 16) {
-			$preferred_current = $data;
-			INFO "Preferred current is now $preferred_current A";
+			$preferred_max_current = $data;
+			INFO "Preferred current is now $preferred_max_current A";
 		} else {
 			WARN "Refuse to set invalid maximum current: '$data'";
 		}
 	} elsif ($topic =~ /preferrednrofphases/) {
 		if ($data == 1 || $data == 3) {
-			$preferred_nrPhases = $data;
-			INFO "Preferred nr of phases is now $preferred_nrPhases";
+			$preferred_max_nrPhases = $data;
+			INFO "Preferred nr of phases is now $preferred_max_nrPhases";
 		} else {
 			WARN "Refuse to set invalid phases number: '$data'";
 		}
