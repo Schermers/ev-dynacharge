@@ -103,6 +103,7 @@ my $boostmode_timer = 0;
 my $preferred_max_current = 16;
 my $preferred_max_nrPhases = 3;
 my $gridReturnCoverage = 0.50; # 0.00 to 1.00
+my $gridReturnStartUpCoverage = 0.50; # 0.00 to 1.00
 my $gridReturnCoverageToStartupAsWell = 'on';
 my $chargepointStatus = 'charging';
 
@@ -125,6 +126,7 @@ my $gridL3TimeStamp = 50;
 my $gridNettoReady = 0;
 my $resetOnDisconnect = 0;
 my $mqttTimeDifference = 2;
+my $allowedCurrent = 0;
 
 my $chargeMode = 'sunOnly'; # sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect
 my $timestamp = 0;
@@ -132,8 +134,7 @@ my $timer_startedCharging = time() - 60; # Set timer to a minute ago
 
 while (1) {
 	$mqtt->tick();
-	# Check if energy value has been uupdated, and only update if charger is in use
-	#if ($gridTotalTopicUpdated >= 2 || $gridTotalTopicUpdated >= 1 && ($totalDelivered == 0 || $totalReturned == 0)) {
+	# Check if MQTT messages about grid are up-to-date/in sync
 	if ((time() - $gridDeliveredTimeStamp <= $mqttTimeDifference && time() - $gridReturnedTimeStamp <= $mqttTimeDifference && $gridTotalTopicUpdated >= 2) || ($gridTotalTopicUpdated >= 1 && ($totalDelivered == 0.000 || $totalReturned == 0.000))) {
 		#INFO "GridNetto | Total returend: $totalReturned total delivered: $totalDelivered TimeStamp difference: ($gridDeliveredTimeStamp - $gridReturnedTimeStamp) gridTotalTopicUpdated: $gridTotalTopicUpdated";
 		# Determine total power
@@ -142,7 +143,9 @@ while (1) {
 		$gridTotalTopicUpdated = 0;
 		$gridNettoReady = 1;
 	}
-	if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridDeliveredTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
+	# Check if energy value has been updated, and only update if charger is in use
+	#if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridDeliveredTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
+	if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridDeliveredTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3) {
 		#INFO "GridPhases | GR: $gridReturnedTimeStamp GD: $gridDeliveredTimeStamp L1: $gridL1TimeStamp L2: $gridL2TimeStamp L3 $gridL3TimeStamp";
 		$topicUpdated = 0;
 		$gridNettoReady = 0;
@@ -151,12 +154,13 @@ while (1) {
 		# Netto power per phase
 		$gridUsage = $l1power + $l2power + $l3power;
 
-		# Difference
+		# Check if Phase values match with total power
 		if($gridUsage != 0 && $totalPower != 0) {
 			$difPerc = $gridUsage/$totalPower*100;
 		} else {
 			$difPerc = 0;
 		}
+		# If difference is too big make use of total power for now
 		if ($difPerc < 97 || $difPerc > 103) {
 			if ($inSync == 0){
 				$topicUpdated++;
@@ -184,9 +188,11 @@ while (1) {
 			$realistic_current = get_maximumCurrent($preferred_max_current, 0);
 		}
 		
+		# Disable charging if max current is set to 0
 		if ($maxcurrent == 0) {
 			$current = 0;
 			INFO "** Current is set to 0, not charging";
+		# If boosttimer is enabled, apply this setting
 		} elsif ($boostmode_timer > 0) {
 			if($timestamp == 0) {
 				$timestamp = midnight_seconds();
@@ -201,13 +207,13 @@ while (1) {
 			$current = $realistic_current;
 			INFO "Boosttimer |  Current boost charge mode active at $realistic_current A - " . $boostmode_timer . " seconds remaining" ;
 			$mqtt->publish("chargepoint/status/boostmode_countdown_timer", $boostmode_timer);
+		# Setting for Sun Only and Sun and Off-Peak
 		} elsif ($chargeMode =~ /sunOnly/ || $chargeMode =~ /sunAndOffPeak/) {
-		
-			# 1 phase
+			# 1 phase - 230V
 			# 1380 min
 			# 3680 max
 			
-			# 3 phases
+			# 3 phases - 230V
 			# 4140 min
 			# 11040 max
 			if ($tariff == 1 && $chargeMode =~ /sunAndOffPeak/) {
@@ -223,8 +229,6 @@ while (1) {
 				}
 				
 				# Determine amount of phases
-				# if ($sunPowerAvailable > (0.0+$offset) && $sunPowerAvailable < (4.0-$offset)) {
-				#if ($sunPowerAvailable < (4.0-$offset)) {
 				if ($sunPowerAvailable < (4.0-$offset) or $preferred_max_nrPhases == 1) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
@@ -278,38 +282,47 @@ while (1) {
 				}
 				
 				# Keep current as is if started charging
-				# if ($chargepointStatus =~ /connected/ && (time() - $timer_startedCharging) < 30) {
 				if ((time() - $timer_startedCharging) < 15) {
 					# Keep current as is
 				} else {
-					#$current = int($sunPowerAvailable / ($voltage * $nr_of_phases));
-					$current = int(($sunPowerAvailable+($voltage * $nr_of_phases * $gridReturnCoverage)) / ($voltage * $nr_of_phases));
+					# Calculate current based on available power and percentage
+					$current = (($sunPowerAvailable+($voltage * $nr_of_phases * $gridReturnCoverage)) / ($voltage * $nr_of_phases));
 				}
 				
 				# Apply max preffered current
 				$current = $preferred_max_current if ($current > $preferred_max_current);
 
-				# Do not charge mor than allowed
+				# Do not charge more than allowed
 				$current = $maxcurrent if ($current > $maxcurrent);
-				#$current = 0 if ($current < 6 && $nr_of_phases == 1);
+				
 				# Calculate current if coverage is also applied to startup power
 				if($current < 6 && $nr_of_phases == 1) {
-					if($gridReturnCoverageToStartupAsWell =~ '/on/') {
-						$current = ($current / (1.0 - $gridReturnCoverage));
-						
+					if($gridReturnCoverageToStartupAsWell =~ 'on') {
+						# Calculate the A threshold
+						$allowedCurrent = (6 * (1.0 - $gridReturnStartUpCoverage));
+
+						# Reset current to normal without $gridReturnCoverage
+						$current = $current - $gridReturnCoverage;
+
+						# Prevent the line from chattering
+						if ($previous_current != 0) {
+							$allowedCurrent = $allowedCurrent - 0.5;
+						}
+
+						# Apply minimum if above allowed percentage
+						$current = 6 if ($current >= $allowedCurrent);
+
 						# Apply 0 if it is still lower than 6
-						$current = 0 if ($current < 6);
-						
-						# avoid getting bigger than minimum
-						$current = 6 if ($current >= 6);
+						$current = 0 if ($current < $allowedCurrent);
 					}
 					else {
 						$current = 0;
 					}
 				}
-				if ($current < 3 && $nr_of_phases == 3) {
-					$current =  6;
-				} elsif ($current < 6 && $nr_of_phases == 3) {
+				else {
+					$current = int($current)
+				}
+				if ($current < 6 && $nr_of_phases == 3) {
 					$current =  6;
 				}
 			}
@@ -354,18 +367,18 @@ while (1) {
 		} else {
 			#INFO "Updating current from $previous_current to $current";
 			$curren_lastSet = time();
-			INFO "$chargeMode | $current A | Grid: $gridUsage | SunPower: $sunPowerAvailable | Max current: $realistic_current | Phases switched: $phases_lastSwitched | Phases counter: $phases_counter | #Phases: $nr_of_phases | Current last set: $curren_lastSet | Volt: $voltage";
+			INFO "$chargeMode | $current A | Grid: $gridUsage | SunPower: $sunPowerAvailable | Max current: $realistic_current | Phases switched: $phases_lastSwitched | Phases counter: $phases_counter | #Phases: $nr_of_phases | Current last set: $curren_lastSet | Volt: $voltage | Startup A: $allowedCurrent";
 			update_loadcurrent($current);
 			update_details();
 		}
 
 	} else {
-		if ($nr_of_phases != 1 && $chargepointStatus =~ /available/) {
-			INFO "Reset number of phases to 1 (Current: $nr_of_phases)";
-			set_nrOfPhases(1);
-			#$nr_of_phases = 0;
-			update_details();
-		}
+		# if ($nr_of_phases != 1 && $chargepointStatus =~ /available/) {
+		# 	INFO "Reset number of phases to 1 (Current: $nr_of_phases)";
+		# 	set_nrOfPhases(1);
+		# 	#$nr_of_phases = 0;
+		# 	update_details();
+		# }
 	}
 	sleep(1);
 }
@@ -427,7 +440,7 @@ sub mqtt_handler {
 			WARN "Refuse to set invalid maximum current: '$data'";
 		}
 	} elsif ($topic =~ /preferredcurrent/) {
-		if ($data > 0 && $data <= 16) {
+		if ($data >= 0 && $data <= 16) {
 			$preferred_max_current = $data;
 			INFO "Preferred current is now $preferred_max_current A";
 		} else {
@@ -441,11 +454,25 @@ sub mqtt_handler {
 			WARN "Refuse to set invalid phases number: '$data'";
 		}
 	} elsif ($topic =~ /applyReturnToGridToStartUpAsWell/) {
-		if ($data =~ '/on/' || $data =~ '/off/') {
+		if ($data =~ 'on' || $data =~ 'off') {
 			$gridReturnCoverageToStartupAsWell = $data;
 			INFO "Apply return to Grid coverage to startup as well: $gridReturnCoverageToStartupAsWell";
 		} else {
 			WARN "Refuse to set invalid gridReturnCoverageToStartupAsWell: '$data'";
+		}
+	} elsif ($topic =~ /gridReturnCoverage/) {
+		if ($data >= 0 && $data <= 100) {
+			$gridReturnCoverage = ($data / 100);
+			INFO "Apply return to Grid percentage to: $gridReturnCoverage%";
+		} else {
+			WARN "Refuse to set invalid gridReturnCoverage (0-100%): '$data'";
+		}
+	} elsif ($topic =~ /gridReturnStartUpCoverage/) {
+		if ($data >= 0 && $data <= 100) {
+			$gridReturnStartUpCoverage = ($data / 100);
+			INFO "Apply return to Grid startup percentage to: $gridReturnStartUpCoverage%";
+		} else {
+			WARN "Refuse to set invalid gridReturnStartUpCoverage (0-100%): '$data'";
 		}
 	} elsif ($topic =~ /electricity_tariff/) {
 		return if ($data == 0); # Do not process empty values
