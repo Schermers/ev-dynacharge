@@ -193,6 +193,12 @@ while (1) {
 			$current = 0;
 			INFO "** Current is set to 0, not charging";
 		# If boosttimer is enabled, apply this setting
+		} elsif ($chargepointStatus ne "connected" && $chargepointStatus ne "charging") {
+			# INFO "Not connected nor charging, send default values";
+			if ($nr_of_phases != 3) {
+				set_nrOfPhases(3);
+			}
+			$current = $preferred_max_current;
 		} elsif ($boostmode_timer > 0) {
 			if($timestamp == 0) {
 				$timestamp = midnight_seconds();
