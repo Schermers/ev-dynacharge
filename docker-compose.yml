@@ -5,6 +5,8 @@ services:
      build: 
        context: .
      restart: unless-stopped
+     volumes:
+      - /home/docker/ev-dynacharge/bin:/home/guest
      environment:
        - MQTT_SIMPLE_ALLOW_INSECURE_LOGIN=1
      entrypoint: [ "./ev-dynacharge.pl",  "--host=${MQTT_HOST}",  "--user=${MQTT_USERNAME}",  "--pass=${MQTT_PASSWORD}" ]
