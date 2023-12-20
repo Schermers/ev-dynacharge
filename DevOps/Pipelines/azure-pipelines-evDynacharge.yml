@@ -1,0 +1,37 @@
+
+trigger:
+  branches:
+      include:
+      - main
+  paths:
+    include:
+      - /bin
+
+variables:
+- group: EV-Dynacharge
+- group: Domoticz
+
+pool: $(agentPool)
+
+jobs:
+- job:
+  displayName: Update EV-Dynacharge script
+  steps:
+    - checkout: self
+    - task: Bash@3
+      displayName: Copy EV-Dynacharge script
+      inputs:
+        targetType: inline
+        script: | 
+          echo "Defining path variables"
+          source=$(Agent.BuildDirectory)/s/bin/*
+          destination=/docker/$(path_dockerVolume)
+          echo "Sync git: $source to $destination"
+          rsync -avzi --progress $source $destination
+          echo "Show all files"
+          ls -l $source
+    - task: Bash@3
+      displayName: Write log entry at Domoticz
+      inputs:
+        targetType: inline
+        script: curl "http://$(dz_hostname):$(dz_port)/json.htm?type=command&param=addlogmessage&message=Azure%20DevOps%20EVDynacharge%20has%20run%20successfully&level=1"
