@@ -31,6 +31,11 @@ jobs:
           echo "Show all files"
           ls -l $source
     - task: Bash@3
+      displayName: Fix permissions
+      inputs:
+        targetType: inline
+        script: chmod 755 /docker/$(path_dockerVolume)/*
+    - task: Bash@3
       displayName: Restart docker container
       inputs:
         targetType: inline
