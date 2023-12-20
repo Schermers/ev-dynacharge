@@ -31,7 +31,13 @@ jobs:
           echo "Show all files"
           ls -l $source
     - task: Bash@3
+      displayName: Restart docker container
+      inputs:
+        targetType: inline
+        script: docker restart $(docker_containerName)"
+    - task: Bash@3
       displayName: Write log entry at Domoticz
       inputs:
         targetType: inline
         script: curl "http://$(dz_hostname):$(dz_port)/json.htm?type=command&param=addlogmessage&message=Azure%20DevOps%20EVDynacharge%20has%20run%20successfully&level=1"
+    
