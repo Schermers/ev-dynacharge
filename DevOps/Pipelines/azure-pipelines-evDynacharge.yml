@@ -34,7 +34,7 @@ jobs:
       displayName: Restart docker container
       inputs:
         targetType: inline
-        script: docker restart $(docker_containerName)"
+        script: docker restart $(docker_containerName)
     - task: Bash@3
       displayName: Write log entry at Domoticz
       inputs:
