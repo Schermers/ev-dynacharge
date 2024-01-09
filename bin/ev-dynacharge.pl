@@ -198,7 +198,7 @@ while (1) {
 			if ($nr_of_phases != 3) {
 				set_nrOfPhases(3);
 			}
-			$current = $preferred_max_current;
+			$current = 0;
 		} elsif ($boostmode_timer > 0) {
 			if($timestamp == 0) {
 				$timestamp = midnight_seconds();
