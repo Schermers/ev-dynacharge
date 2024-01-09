@@ -25,7 +25,7 @@ jobs:
         script: | 
           echo "Defining path variables"
           source=$(Agent.BuildDirectory)/s/bin/*
-          destination=/docker/$(path_dockerVolume)
+          destination=/docker/$(path_evdVolume)
           echo "Sync git: $source to $destination"
           rsync -avzi --progress $source $destination
           echo "Show all files"
@@ -34,7 +34,7 @@ jobs:
       displayName: Fix permissions
       inputs:
         targetType: inline
-        script: chmod 755 /docker/$(path_dockerVolume)/*
+        script: chmod 755 /docker/$(path_evdVolume)/*
     - task: Bash@3
       displayName: Restart docker container
       inputs:
