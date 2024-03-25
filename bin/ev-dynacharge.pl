@@ -223,8 +223,8 @@ while (1) {
 			# 4140 min
 			# 11040 max
 			if ($tariff == 1 && $chargeMode =~ /sunAndOffPeak/) {
-				$current = $realistic_current;
 				set_nrOfPhases($preferred_max_nrPhases);
+				$current = $realistic_current;
 			} else {
 				# Determine netto energy balance when charging is active - Ignore this if phases just has been switched
 				if ($chargepointStatus =~ /charging/ && (time() - $phases_lastSwitched > 12)) {
