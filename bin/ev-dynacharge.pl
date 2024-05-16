@@ -223,7 +223,12 @@ while (1) {
 			# 4140 min
 			# 11040 max
 			if ($tariff == 1 && $chargeMode =~ /sunAndOffPeak/) {
-				set_nrOfPhases($preferred_max_nrPhases);
+				# Switch current when car has started charging to avoid save-mode
+				if ($chargepointStatus =~ /charging/ && (time() - $timer_startedCharging) > 30) {
+					set_nrOfPhases($preferred_max_nrPhases);
+				}
+
+				# Send new current
 				$current = $realistic_current;
 			} else {
 				# Determine netto energy balance when charging is active - Ignore this if phases just has been switched
