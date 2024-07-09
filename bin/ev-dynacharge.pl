@@ -72,6 +72,7 @@ $mqtt->subscribe('dsmr/reading/electricity_currently_returned',  \&mqtt_handler)
 $mqtt->subscribe('dsmr/meter-stats/electricity_tariff',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/chargepointStatus',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/voltage',  \&mqtt_handler);
+$mqtt->subscribe('chargepoint/nr_of_phases',  \&mqtt_handler);
 $mqtt->subscribe($timers_topic,  \&mqtt_handler);
 # Vars send to charger
 my $offset = 0.05;
@@ -509,6 +510,15 @@ sub mqtt_handler {
 		return if ($data == 0); # Do not process empty values
 		$voltage = ($data / 1000);
 		#INFO "Current voltage: $voltage"
+	} elsif ($topic =~ /nr_of_phases/) {
+		if ($data == 1 || $data == 3) {
+			$nr_of_phases = $data;
+			$phases_counter = 0;
+			$phases_lastSwitched = time();
+			INFO "Nr of phases is now $nr_of_phases";
+		} else {
+			WARN "Refuse to set invalid phases number: '$data'";
+		}
 	} elsif ($topic =~ /phaseSwitchDelay/) {
 		$phases_counterLimit = $data;
 	} else {
@@ -600,7 +610,7 @@ sub set_nrOfPhases {
 	# Check if last switch time was more than 60 seconds ago
 	if ($arg1 != $nr_of_phases && (time() - $phases_lastSwitched > 60)) {
 		INFO "Switching to $arg1 phase charging";
-		$nr_of_phases = $arg1;
+		#$nr_of_phases = $arg1;
 		$mqtt->publish($nr_phases_topic, $nr_of_phases);
 		$phases_counter = 0;
 		$phases_lastSwitched = time();
