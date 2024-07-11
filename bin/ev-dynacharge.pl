@@ -614,7 +614,6 @@ sub set_nrOfPhases {
 
 		# Set to 0 to enforce change of value
 		#$mqtt->publish($nr_phases_topic, 0);
-
 		# Update value to preferred one
 		$mqtt->publish($nr_phases_topic, $arg1);
 		$phases_counter = 0;
