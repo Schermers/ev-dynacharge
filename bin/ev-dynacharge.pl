@@ -49,7 +49,7 @@ my $timers_topic = 'chargepoint/config/#';
 #   for access to ..config/boostmode
 #                 ..config/haltmode
 my $mode = 'chargepoint/mode';
-my $nr_phases_topic = 'chargepoint/nr_of_phases';
+my $nr_phases_topic = 'chargepoint/set_nr_of_phases';
 
 my $preferredCurrent_topic = 'chargepoint/config/preferredcurrent';
 my $preferredNrPhases_topic = 'chargepoint/config/preferrednrofphases';
