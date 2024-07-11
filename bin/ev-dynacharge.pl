@@ -613,10 +613,10 @@ sub set_nrOfPhases {
 		#$nr_of_phases = $arg1;
 
 		# Set to 0 to enforce change of value
-		$mqtt->publish($nr_phases_topic, 0);
+		#$mqtt->publish($nr_phases_topic, 0);
 
 		# Update value to preferred one
-		$mqtt->publish($nr_phases_topic, $nr_of_phases);
+		$mqtt->publish($nr_phases_topic, $arg1);
 		$phases_counter = 0;
 		$phases_lastSwitched = time();
 	}
