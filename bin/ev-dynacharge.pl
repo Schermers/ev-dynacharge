@@ -611,6 +611,11 @@ sub set_nrOfPhases {
 	if ($arg1 != $nr_of_phases && (time() - $phases_lastSwitched > 60)) {
 		INFO "Switching to $arg1 phase charging";
 		#$nr_of_phases = $arg1;
+
+		# Set to 0 to enforce change of value
+		$mqtt->publish($nr_phases_topic, 0);
+
+		# Update value to preferred one
 		$mqtt->publish($nr_phases_topic, $nr_of_phases);
 		$phases_counter = 0;
 		$phases_lastSwitched = time();
