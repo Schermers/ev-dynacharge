@@ -196,9 +196,9 @@ while (1) {
 		# If boosttimer is enabled, apply this setting
 		} elsif ($chargepointStatus ne "connected" && $chargepointStatus ne "charging") {
 			# INFO "Not connected nor charging, send default values";
-			if ($nr_of_phases != 3) {
-				set_nrOfPhases(3);
-			}
+			# if ($nr_of_phases != 3) {
+			# 	set_nrOfPhases(3);
+			# }
 			$current = 0;
 		} elsif ($boostmode_timer > 0) {
 			if($timestamp == 0) {
