@@ -383,14 +383,13 @@ while (1) {
 			update_loadcurrent($current);
 			update_details();
 		}
-
-	} else {
-		# if ($nr_of_phases != 1 && $chargepointStatus =~ /available/) {
-		# 	INFO "Reset number of phases to 1 (Current: $nr_of_phases)";
-		# 	set_nrOfPhases(1);
-		# 	#$nr_of_phases = 0;
-		# 	update_details();
-		# }
+	# Fall-back for DSMR, keep updating zero value
+	} elsif ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp > 45 && time() - $gridDeliveredTimeStamp > 45) && (time()-$curren_lastSet) > 45 && $current == 0 && $chargepointStatus =~ /connected/) {
+		#INFO "Updating current
+		$curren_lastSet = time();
+		INFO "$chargeMode | $current A | Running in fallback mode";
+		update_loadcurrent($current);
+		update_details();
 	}
 	sleep(1);
 }
@@ -554,47 +553,17 @@ sub update_details {
 }
 
 sub update_loadcurrent {
-	
 	my $current = shift();
-	
-	#my $original_float = $current;
     my $network_long = unpack 'L', pack 'f', $current;
-
-
-    #my $pack_float = pack 'f', $original_float;
-    #my $unpack_long = unpack 'L', $pack_float;
-
-
-    #print $network_long . "\n";
-
-
 	my $parameters = {
 		'value_msb' => $network_long / 2**16,
 		'value_lsb' => $network_long % 2**16,
 		'current'   => $current
 	};
-
-    #my $value_lsb = $network_long % 2**16;
-    #my $value_msb = $network_long / 2**16;
-    
-	#my $client = Device::Modbus::TCP::Client->new( host => '192.168.3.144');
-	#my $client = Device::Modbus::TCP::Client->new( host => '192.168.1.142');
-	#my $req1 = $client->write_multiple_registers(
-	#	unit => 1, address => 1210,
-	#	values => [$val2, $val1]);
-	#my $req2 = $client->write_multiple_registers(
-	#	unit => 2, address => 1210,
-    #	values => [$val2, $val1]);
-	#
-	#$client->send_request($req1) || die "Send error: $!";
-	#$client->send_request($req2) || die "Send error: $!";
-	#sleep(5);
-	#$client->disconnect();
 	
 	# Create the json struct
 	my $json = encode_json($parameters);
 	$mqtt->publish($set_topic, $json);
-	
 }
 
 sub midnight_seconds {
