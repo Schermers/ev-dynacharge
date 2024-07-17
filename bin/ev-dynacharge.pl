@@ -343,15 +343,19 @@ while (1) {
 			# Off-peak is 1, Normal = 2
 			if($tariff == 1) {
 				#INFO "$chargeMode selected, charging at $realistic_current A since it is off-Peak";
+				if ($chargepointStatus =~ /charging/ && (time() - $timer_startedCharging) > 30) {
+					set_nrOfPhases($preferred_max_nrPhases);
+				}
 				$current = $realistic_current;
-				set_nrOfPhases($preferred_max_nrPhases);
 			} else {
 				#INFO "$chargeMode selected, currently it is normal rate. No charging.";
 				$current = 0;
 			}
 		} elsif ($chargeMode =~ /boostUntillDisconnect/) {
 			INFO "$chargeMode | Charging at $realistic_current A.";
-			set_nrOfPhases($preferred_max_nrPhases);
+			if ($chargepointStatus =~ /charging/ && (time() - $timer_startedCharging) > 30) {
+				set_nrOfPhases($preferred_max_nrPhases);
+			}
 			$current = $realistic_current;
 		} elsif ($chargeMode =~ /noCharging/) {
 			#INFO "$chargeMode | Charging at 0 A.";
