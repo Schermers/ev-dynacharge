@@ -145,8 +145,8 @@ while (1) {
 		$gridNettoReady = 1;
 	}
 	# Check if energy value has been updated, and only update if charger is in use
-	#if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridDeliveredTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
-	if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridDeliveredTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3) {
+	#if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridReturnedTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
+	if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridReturnedTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3) {
 		#INFO "GridPhases | GR: $gridReturnedTimeStamp GD: $gridDeliveredTimeStamp L1: $gridL1TimeStamp L2: $gridL2TimeStamp L3 $gridL3TimeStamp";
 		$topicUpdated = 0;
 		$gridNettoReady = 0;
@@ -388,7 +388,7 @@ while (1) {
 			update_details();
 		}
 	# Fall-back for DSMR, keep updating zero value
-	} elsif ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp > 45 && time() - $gridDeliveredTimeStamp > 45) && (time()-$curren_lastSet) > 45 && $current == 0 && $chargepointStatus =~ /connected/) {
+	} elsif ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp > 45 && time() - $gridReturnedTimeStamp > 45) && (time()-$curren_lastSet) > 45 && $current == 0 && $chargepointStatus =~ /connected/) {
 		#INFO "Updating current
 		$curren_lastSet = time();
 		INFO "$chargeMode | $current A | Running in fallback mode";
