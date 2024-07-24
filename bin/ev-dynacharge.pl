@@ -73,6 +73,9 @@ $mqtt->subscribe('dsmr/meter-stats/electricity_tariff',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/chargepointStatus',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/voltage',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/nr_of_phases',  \&mqtt_handler);
+$mqtt->subscribe('chargepoint/applyReturnToGridToStartUpAsWell',  \&mqtt_handler);
+$mqtt->subscribe('chargepoint/gridReturnCoverage',  \&mqtt_handler);
+$mqtt->subscribe('chargepoint/gridReturnStartUpCoverage',  \&mqtt_handler);
 $mqtt->subscribe($timers_topic,  \&mqtt_handler);
 # Vars send to charger
 my $offset = 0.05;
