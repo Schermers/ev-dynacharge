@@ -480,15 +480,15 @@ sub mqtt_handler {
 		}
 	} elsif ($topic =~ /gridReturnCoverage/) {
 		if ($data >= 0 && $data <= 100) {
-			$gridReturnCoverage = ($data / 100);
 			INFO "Apply return to Grid percentage to: $gridReturnCoverage%";
+			$gridReturnCoverage = ($data / 100);
 		} else {
 			WARN "Refuse to set invalid gridReturnCoverage (0-100%): '$data'";
 		}
 	} elsif ($topic =~ /gridReturnStartUpCoverage/) {
 		if ($data >= 0 && $data <= 100) {
-			$gridReturnStartUpCoverage = ($data / 100);
 			INFO "Apply return to Grid startup percentage to: $gridReturnStartUpCoverage%";
+			$gridReturnStartUpCoverage = ($data / 100);
 		} else {
 			WARN "Refuse to set invalid gridReturnStartUpCoverage (0-100%): '$data'";
 		}
