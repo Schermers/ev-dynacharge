@@ -370,7 +370,7 @@ while (1) {
 		}
 		
 		# Update new current
-		if(time() - $phases_lastSwitched <= 12) {
+		if(time() - $phases_lastSwitched <= 6) {
 			#Phases just switched, wait before updating the current
 			$current = $previous_current
 		} elsif($chargepointStatus =~ /connected/ && $previous_current != 0 && $current == 0 && (time()-$curren_lastSet) < 60) {
