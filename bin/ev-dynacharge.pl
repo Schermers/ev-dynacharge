@@ -397,12 +397,7 @@ while (1) {
 		INFO "$chargeMode | $current A | Running in fallback mode";
 		update_loadcurrent($current);
 		update_details();
-	} elsif ($gridNettoReady == 1 && $chargepointStatus =~ /connected/) {
-		INFO "Grid delivered timestamp: ", (time() - $gridDeliveredTimeStamp);
-  		INFO "Grid returned timestamp: ", (time() - $gridReturnedTimeStamp);
-    		INFO "Current last set: ", (time() - $curren_lastSet);
-      		INFO "Chargepoint status: ", (time() - $chargepointStatus);
- 	}
+	}
 	sleep(1);
 }
 
