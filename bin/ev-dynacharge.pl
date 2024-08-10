@@ -386,7 +386,7 @@ while (1) {
 		} else {
 			#INFO "Updating current from $previous_current to $current";
 			$curren_lastSet = time();
-			INFO "$chargeMode | $current A | Grid: $gridUsage | SunPower: $sunPowerAvailable | Max current: $realistic_current | Phases switched: $phases_lastSwitched | Phases counter: $phases_counter | #Phases: $nr_of_phases | Current last set: $curren_lastSet | Volt: $voltage | Startup A: $allowedCurrent";
+			INFO "$chargeMode | $current A | Grid: $gridUsage | SunPower: $sunPowerAvailable | Max current: $realistic_current | Phases switched: $phases_lastSwitched | Phases counter: $phases_counter | #Phases: $nr_of_phases | Current last set: $curren_lastSet | Volt: ", $voltage*1000, " | Startup A: $allowedCurrent";
 			update_loadcurrent($current);
 			update_details();
 		}
@@ -397,7 +397,12 @@ while (1) {
 		INFO "$chargeMode | $current A | Running in fallback mode";
 		update_loadcurrent($current);
 		update_details();
-	}
+	} elsif ($gridNettoReady == 1 && $chargepointStatus =~ /connected/) {
+		INFO "Grid delivered timestamp: ", (time() - $gridDeliveredTimeStamp);
+  		INFO "Grid returned timestamp: ", (time() - $gridReturnedTimeStamp);
+    		INFO "Current last set: ", (time() - $curren_lastSet);
+      		INFO "Chargepoint status: ", (time() - $chargepointStatus);
+ 	}
 	sleep(1);
 }
 
