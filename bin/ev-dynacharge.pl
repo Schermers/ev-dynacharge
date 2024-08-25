@@ -584,6 +584,7 @@ sub set_nrOfPhases {
 	my ( $arg1 ) = @_;
 	# Check if phase number has changed at all
 	# Check if last switch time was more than 60 seconds ago
+	INFO "Set_nrOfPhases - from: $nr_of_phases to: $arg1";
 	if ($arg1 != $nr_of_phases && (time() - $phases_lastSwitched > 60)) {
 		INFO "Switching to $arg1 phase charging";
 		#$nr_of_phases = $arg1;
