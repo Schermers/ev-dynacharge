@@ -527,8 +527,10 @@ sub mqtt_handler {
 		}
 	} elsif ($topic =~ /phaseSwitchDelayTo1Phase/) {
 		$phases_counterLimitTo1Phase = $data;
+        INFO "Switch delay to 1 phase: $data";
 	} elsif ($topic =~ /phaseSwitchDelayTo3Phase/) {
 		$phases_counterLimitTo3Phase = $data;
+        INFO "Switch delay to 3 phases: $data";
 	} else {
 		WARN "Invalid message received from topic " . $topic;
 		return;
