@@ -335,7 +335,7 @@ while (1) {
 					}
 				}
 				else {
-					$current = int($current)
+					$current = int($current);
 				}
 				if ($current < 6 && $nr_of_phases == 3) {
 					$current =  6;
@@ -372,17 +372,17 @@ while (1) {
 		# Update new current
 		if(time() - $phases_lastSwitched <= 6) {
 			#Phases just switched, wait before updating the current
-			$current = $previous_current
+			$current = $previous_current;
 		} elsif($chargepointStatus =~ /connected/ && $previous_current != 0 && $current == 0 && (time()-$curren_lastSet) < 60) {
 			# Charging still starting, wait for completion - update immediatly the first time the phase will be switched for correct value
-			$current = $previous_current
+			$current = $previous_current;
 		} elsif($previous_current == $current && (time()-$curren_lastSet) < 20) {
 			# Do nothing
 			#INFO "Current is update within last 30 seconds. ignore this one.";
-			$current = $previous_current
+			$current = $previous_current;
 		} elsif((time()-$curren_lastSet) < 5) {
 			# Give the charger time to react on the previous update
-			$current = $previous_current
+			$current = $previous_current;
 		} else {
 			#INFO "Updating current from $previous_current to $current";
 			$curren_lastSet = time();
@@ -602,7 +602,8 @@ sub set_nrOfPhases {
 		$phases_lastSwitched = time();
         if ($arg1 == 3) {
             INFO "Update load to 6 Amps";
-            update_loadcurrent(6);
+            $previous_current = 6;
+            update_loadcurrent($previous_current);
         }
 	}
 }
