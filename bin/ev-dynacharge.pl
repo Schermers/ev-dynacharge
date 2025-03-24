@@ -115,8 +115,8 @@ my $chargepointStatus = 'charging';
 my $phases_counter = 0;
 my $phases_lastChecked = 1;
 my $phases_lastSwitched = time() - 30; # Set timer to an 30 seconds ago
-my $phases_counterLimit = 300; # Limit before changing phases
-
+my $phases_counterLimitTo1Phase = 300; # Limit before changing phases
+my $phases_counterLimitTo3Phase = 60; # Limit before changing phases
 
 my $chargingPower = 0;
 my $voltage = 0.23;
@@ -184,14 +184,14 @@ while (1) {
 			}
 		}
 		$sunPowerAvailable = $gridUsage * - 1;
-		
+
 		# Determine maximum load to avoid switch of the main fuse
 		if($chargepointStatus =~ /charging/) {
 			$realistic_current = get_maximumCurrent($preferred_max_current, $current);
 		} else {
 			$realistic_current = get_maximumCurrent($preferred_max_current, 0);
 		}
-		
+
 		# Disable charging if max current is set to 0
 		if ($maxcurrent == 0) {
 			$current = 0;
@@ -222,7 +222,7 @@ while (1) {
 			# 1 phase - 230V
 			# 1380 min
 			# 3680 max
-			
+
 			# 3 phases - 230V
 			# 4140 min
 			# 11040 max
@@ -242,7 +242,7 @@ while (1) {
 					$sunPowerAvailable = $sunPowerAvailable + $chargingPower;
 					DEBUG "Netto energy balance (including current charging): $sunPowerAvailable kW. Charging at $chargingPower kW";
 				}
-				
+
 				# Determine amount of phases
 				if ($sunPowerAvailable < (4.0-$offset) or $preferred_max_nrPhases == 1) {
 					# If current number of phases is not equal, update timer
@@ -256,11 +256,11 @@ while (1) {
 						$phases_counter = time() - $phases_lastChecked;
 
 						# Switch if limit is reached to switch in nr of phases
-						if ($phases_counter > $phases_counterLimit || $nr_of_phases == 0) {
+						if ($phases_counter > $phases_counterLimitTo1Phase || $nr_of_phases == 0) {
 							set_nrOfPhases(1);
 						}
 						else {
-							INFO "Wait for switch to 1 phase. Current counter: $phases_counter s (of $phases_counterLimit s)";
+							INFO "Wait for switch to 1 phase. Current counter: $phases_counter s (of $phases_counterLimitTo1Phase s)";
 						}
 					} else {
 						# Reset counter if current nr of phases is correct and timer was used
@@ -277,13 +277,13 @@ while (1) {
 						}
 						# Update counter
 						$phases_counter = time() - $phases_lastChecked;
-						
+
 						# Switch if limit is reached to switch in nr of phases
-						if($phases_counter > $phases_counterLimit || $nr_of_phases == 0) {
+						if($phases_counter > $phases_counterLimitTo3Phase || $nr_of_phases == 0) {
 							set_nrOfPhases(3);
 						}
 						else {
-							#INFO "Wait for switch to 3 phases. Current counter: $phases_counter s (of $phases_counterLimit s)";
+							INFO "Wait for switch to 3 phases. Current counter: $phases_counter s (of $phases_counterLimitTo3Phase s)";
 						}
 					} else {
 						# Reset counter if current nr of phases is correct and timer was used
@@ -295,7 +295,7 @@ while (1) {
 					#INFO "Switching to one-phase charging (not set yet)";
 					set_nrOfPhases(1);
 				}
-				
+
 				# Keep current as is if started charging
 				if ((time() - $timer_startedCharging) < 15) {
 					# Keep current as is
@@ -303,13 +303,13 @@ while (1) {
 					# Calculate current based on available power and percentage
 					$current = (($sunPowerAvailable+($voltage * $nr_of_phases * $gridReturnCoverage)) / ($voltage * $nr_of_phases));
 				}
-				
+
 				# Apply max preffered current
 				$current = $preferred_max_current if ($current > $preferred_max_current);
 
 				# Do not charge more than allowed
 				$current = $maxcurrent if ($current > $maxcurrent);
-				
+
 				# Calculate current if coverage is also applied to startup power
 				if($current < 6 && $nr_of_phases == 1) {
 					if($gridReturnCoverageToStartupAsWell =~ 'on') {
@@ -368,7 +368,7 @@ while (1) {
 			$mqtt->publish($chargeMode_topic, 'sunOnly');
 			$current = 0;
 		}
-		
+
 		# Update new current
 		if(time() - $phases_lastSwitched <= 6) {
 			#Phases just switched, wait before updating the current
@@ -406,7 +406,7 @@ sub mqtt_handler {
 
 
 	TRACE "Got '$data' from $topic";
-		
+
 	if ($topic =~ /phase_currently_returned_l1/) {
 		return if ($data == 0); # Do not process empty values
 		$l1power = $data * - 1;
@@ -525,13 +525,15 @@ sub mqtt_handler {
 		} else {
 			WARN "Refuse to set invalid phases number: '$data'";
 		}
-	} elsif ($topic =~ /phaseSwitchDelay/) {
-		$phases_counterLimit = $data;
+	} elsif ($topic =~ /phaseSwitchDelayTo1Phase/) {
+		$phases_counterLimitTo1Phase = $data;
+	} elsif ($topic =~ /phaseSwitchDelayTo3Phase/) {
+		$phases_counterLimitTo3Phase = $data;
 	} else {
 		WARN "Invalid message received from topic " . $topic;
 		return;
 	}
-	
+
 	DEBUG "Energy balance is now " . $sunPowerAvailable . "kW";
 }
 
@@ -553,7 +555,7 @@ sub update_details {
 		'curren_lastSet' => (time() - $curren_lastSet),
 		'curren_lastSet_timestamp' => $curren_lastSet
 	};
-	
+
 	# Create the json struct
 	my $jsonDetails = encode_json($details);
 	$mqtt->publish($details_topic, $jsonDetails);
@@ -567,7 +569,7 @@ sub update_loadcurrent {
 		'value_lsb' => $network_long % 2**16,
 		'current'   => $current
 	};
-	
+
 	# Create the json struct
 	my $json = encode_json($parameters);
 	$mqtt->publish($set_topic, $json);
@@ -602,7 +604,7 @@ sub get_maximumCurrent {
 	my ( $pref_current, $charging_current ) = @_;
 	my $newChargingCurrent = 0;
 	my $highestCurrent = 0;
-	
+
 	# Determine the highest phase usage
 	if ($nr_of_phases == 1) {
 		$highestCurrent = $l1power;
@@ -615,19 +617,19 @@ sub get_maximumCurrent {
 			$highestCurrent = $l3power;
 		}
 	}
-	
+
 	# Calculate the highest current based on power
 	$highestCurrent = ($highestCurrent / $voltage);
 	# Calculate the maximum charging current based on current usage and chargingpower
 	$newChargingCurrent = int($charging_current + ($mainfuse - $safetyMarge) - $highestCurrent);
-		
-	# Limit the charging current if it is higher than the maxcurrent	
+
+	# Limit the charging current if it is higher than the maxcurrent
 	$newChargingCurrent = $maxcurrent if ($newChargingCurrent > $maxcurrent);
 	# Limit the charging current if it is higher than the preferred current
 	$newChargingCurrent = $pref_current if ($newChargingCurrent > $pref_current);
 	# Limit the charging current if it is lower than the minimum current (6A)
 	$newChargingCurrent = 0 if ($newChargingCurrent < 6);
-	
+
 	#INFO "Highest load: $highestCurrent A, current chargingcurrent: $charging_current A";
 	#INFO "New charging current: $newChargingCurrent based on current load: L1: $l1power L2: $l2power L3: $l3power";
 	return $newChargingCurrent;
@@ -640,11 +642,11 @@ ev-dynacharge.pl - Dynamically charge an electric vehicle based on the energy bu
 =head1 SYNOPSIS
 
     ./ev-dynacharge.pl [--host <MQTT server hostname...> ]
-    
+
 =head1 DESCRIPTION
 
-This script allows to dynamically steer the charging process of an electric vehicle. It fetches energy 
-consumption values over MQTT and based on the balance and the selected operating mode it will set the 
+This script allows to dynamically steer the charging process of an electric vehicle. It fetches energy
+consumption values over MQTT and based on the balance and the selected operating mode it will set the
 charge current of the chargepoint where the vehicle is connected to.
 
 This is very much a work in progress, additional documentation and howto information will be added
