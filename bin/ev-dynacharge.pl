@@ -599,6 +599,7 @@ sub set_nrOfPhases {
 
 		$mqtt->publish($nr_phases_topic, $arg1);
 		$phases_counter = 0;
+        $phases_lastChecked = time();
 		$phases_lastSwitched = time();
         if ($arg1 == 3) {
             INFO "Update load to 6 Amps";
