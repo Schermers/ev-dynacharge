@@ -106,7 +106,7 @@ my $realistic_current = 0;
 my $boostmode_timer = 0;
 my $preferred_max_current = 16;
 my $preferred_max_nrPhases = 3;
-my $gridReturnCoverage = 0.50; # 0.00 to 1.00
+my $gridReturnCoverage = 0.50; # 0.00 to 2.00
 my $gridReturnStartUpCoverage = 0.50; # 0.00 to 1.00
 my $gridReturnCoverageToStartupAsWell = 'on';
 my $chargepointStatus = 'charging';
@@ -244,7 +244,7 @@ while (1) {
 				}
 
 				# Determine amount of phases
-				if ($sunPowerAvailable < (4.0-$offset) or $preferred_max_nrPhases == 1) {
+				if ($sunPowerAvailable < (4.0-$offset+($voltage * $nr_of_phases * $gridReturnCoverage)) or $preferred_max_nrPhases == 1) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
@@ -268,7 +268,7 @@ while (1) {
 							$phases_lastChecked = 0;
 						}
 					}
-				} elsif ($sunPowerAvailable > (4.14+$offset)) {
+				} elsif ($sunPowerAvailable > (4.14+$offset+($voltage * $nr_of_phases * $gridReturnCoverage)) {
 					if ($nr_of_phases != 3) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
@@ -479,7 +479,7 @@ sub mqtt_handler {
 			WARN "Refuse to set invalid gridReturnCoverageToStartupAsWell: '$data'";
 		}
 	} elsif ($topic =~ /gridReturnCoverage/) {
-		if ($data >= 0 && $data <= 100) {
+		if ($data >= 0 && $data <= 200) {
 			INFO "Apply return to Grid percentage to: $data%";
 			$gridReturnCoverage = ($data / 100);
 		} else {
