@@ -268,7 +268,7 @@ while (1) {
 							$phases_lastChecked = 0;
 						}
 					}
-				} elsif ($sunPowerAvailable > (4.14+$offset+($voltage * $nr_of_phases * $gridReturnCoverage)) {
+				} elsif ($sunPowerAvailable > (4.14+$offset+($voltage * $nr_of_phases * $gridReturnCoverage))) {
 					if ($nr_of_phases != 3) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
