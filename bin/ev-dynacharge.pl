@@ -244,7 +244,7 @@ while (1) {
 				}
 
 				# Determine amount of phases
-				if ($sunPowerAvailable < (4.0-$offset-(460 * $gridReturnCoverage)) or $preferred_max_nrPhases == 1) {
+				if ($sunPowerAvailable < (4.0-$offset-(0.46 * $gridReturnCoverage)) or $preferred_max_nrPhases == 1) {
 					# If current number of phases is not equal, update timer
 					if ($nr_of_phases != 1) {
 						# Update last checked to current time if empty
@@ -268,7 +268,7 @@ while (1) {
 							$phases_lastChecked = 0;
 						}
 					}
-				} elsif ($sunPowerAvailable > (4.14+$offset-(460 * $gridReturnCoverage))) {
+				} elsif ($sunPowerAvailable > (4.14+$offset-(0.46 * $gridReturnCoverage))) {
 					if ($nr_of_phases != 3) {
 						# Update last checked to current time if empty
 						if($phases_lastChecked == 0) {
