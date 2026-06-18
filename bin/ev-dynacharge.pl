@@ -121,7 +121,7 @@ my $resetOnDisconnect = 0;
 my $mqttTimeDifference = 2;
 my $allowedCurrent = 0;
 
-my $chargeMode = 'sunOnly'; # sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect
+my $chargeMode = ''; # sunOnly, offPeakOnly, sunAndOffPeak, boostUntillDisconnect
 my $timestamp = 0;
 my $timer_startedCharging = time() - 60; # Set timer to a minute ago
 
