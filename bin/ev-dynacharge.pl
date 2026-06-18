@@ -76,6 +76,7 @@ $mqtt->subscribe('chargepoint/nr_of_phases',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/applyReturnToGridToStartUpAsWell',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/gridReturnCoverage',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/gridReturnStartUpCoverage',  \&mqtt_handler);
+$mqtt->subscribe('chargepoint/grid/usage',  \&mqtt_handler);
 $mqtt->subscribe($timers_topic,  \&mqtt_handler);
 # Vars send to charger
 my $offset = 0.05;
@@ -442,6 +443,10 @@ sub mqtt_handler {
 		$totalDelivered = $data;
 		$gridTotalTopicUpdated++;
 		$gridDeliveredTimeStamp = time();
+	} elsif ($topic =~ /grid/usage/) {
+		#return if ($data == 0); # Do not process empty values
+		$gridUsage = $data;
+		INFO "Grid usage retrieved $gridUsage W";
 	} elsif ($topic =~ /electricity_currently_returned/) {
 		#return if ($data == 0); # Do not process empty values
 		$totalReturned = $data * - 1;
