@@ -60,15 +60,6 @@ my $details_topic = 'chargepoint/details';
 my $maxcurrent = 16;
 my $nr_of_phases = 0;
 
-$mqtt->subscribe('dsmr/reading/phase_currently_returned_l1',  \&mqtt_handler);
-$mqtt->subscribe('dsmr/reading/phase_currently_returned_l2',  \&mqtt_handler);
-$mqtt->subscribe('dsmr/reading/phase_currently_returned_l3',  \&mqtt_handler);
-$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l1',  \&mqtt_handler);
-$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l2',  \&mqtt_handler);
-$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l3',  \&mqtt_handler);
-$mqtt->subscribe('dsmr/reading/electricity_currently_delivered',  \&mqtt_handler);
-$mqtt->subscribe('dsmr/reading/electricity_currently_returned',  \&mqtt_handler);
-
 $mqtt->subscribe('dsmr/meter-stats/electricity_tariff',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/chargepointStatus',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/voltage',  \&mqtt_handler);
@@ -86,7 +77,7 @@ my $curren_lastSet = time() - 30;
 
 # Variables for current power
 my $sunPowerAvailable = 0;
-my $gridUsage = 0;
+my $gridUsage = -1;
 my $totalPower = 0;
 my $totalReturned = 0.000;
 my $totalDelivered = 0.000;
@@ -121,14 +112,6 @@ my $phases_counterLimitTo3Phase = 60; # Limit before changing phases
 
 my $chargingPower = 0;
 my $voltage = 0.23;
-my $topicUpdated = 0;
-my $gridTotalTopicUpdated = 0;
-my $gridDeliveredTimeStamp = 10;
-my $gridReturnedTimeStamp = 20;
-my $gridL1TimeStamp = 30;
-my $gridL2TimeStamp = 40;
-my $gridL3TimeStamp = 50;
-my $gridNettoReady = 0;
 my $resetOnDisconnect = 0;
 my $mqttTimeDifference = 2;
 my $allowedCurrent = 0;
@@ -139,51 +122,9 @@ my $timer_startedCharging = time() - 60; # Set timer to a minute ago
 
 while (1) {
 	$mqtt->tick();
-	# Check if MQTT messages about grid are up-to-date/in sync
-	if ((time() - $gridDeliveredTimeStamp <= $mqttTimeDifference && time() - $gridReturnedTimeStamp <= $mqttTimeDifference && $gridTotalTopicUpdated >= 2) || ($gridTotalTopicUpdated >= 1 && ($totalDelivered == 0.000 || $totalReturned == 0.000))) {
-		#INFO "GridNetto | Total returend: $totalReturned total delivered: $totalDelivered TimeStamp difference: ($gridDeliveredTimeStamp - $gridReturnedTimeStamp) gridTotalTopicUpdated: $gridTotalTopicUpdated";
-		# Determine total power
-		# Netto power
-		$totalPower = $totalReturned + $totalDelivered;
-		$gridTotalTopicUpdated = 0;
-		$gridNettoReady = 1;
-	}
-	# Check if energy value has been updated, and only update if charger is in use
-	#if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridReturnedTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3 && ($chargepointStatus =~ /connected/ || $chargepointStatus =~ /charging/)) {
-	if ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp <= $mqttTimeDifference || time() - $gridReturnedTimeStamp <= $mqttTimeDifference) && (((time() - $gridL1TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL2TimeStamp) <= $mqttTimeDifference) && ((time() - $gridL3TimeStamp) <= $mqttTimeDifference)) && $topicUpdated >= 3) {
-		#INFO "GridPhases | GR: $gridReturnedTimeStamp GD: $gridDeliveredTimeStamp L1: $gridL1TimeStamp L2: $gridL2TimeStamp L3 $gridL3TimeStamp";
-		$topicUpdated = 0;
-		$gridNettoReady = 0;
+	if($gridUsage != -1) {
 		$previous_current = $current;
 
-		# Netto power per phase
-		$gridUsage = $l1power + $l2power + $l3power;
-
-		# Check if Phase values match with total power
-		if($gridUsage != 0 && $totalPower != 0) {
-			$difPerc = $gridUsage/$totalPower*100;
-		} else {
-			$difPerc = 0;
-		}
-		# If difference is too big make use of total power for now
-		if ($difPerc < 97 || $difPerc > 103) {
-			if ($inSync == 0){
-				$topicUpdated++;
-				INFO "WARNING | MQTT readings not in sync with total power. Adding value to topicUpdate. Grid: $totalPower Sum: $gridUsage";
-			}
-
-			# Only print if usage is high enough to report. Otherwise the differences will be too big
-			if($gridUsage < -500 && $gridUsage > 500) {
-				INFO "WARNING | Sum phases: $gridUsage totalPower: $totalPower (difference: $difPerc %)";
-			}
-			$gridUsage = $totalPower;
-		} else {
-			#INFO "Phase power: $gridUsage is the same as totalPower: $totalPower (difference: $difPerc %)";
-			if ($inSync == 0 && $difPerc == 100){
-				INFO "MQTT readings are now in sync with total power.";
-				$inSync = 1;
-			}
-		}
 		$sunPowerAvailable = $gridUsage * - 1;
 
 		# Determine maximum load to avoid switch of the main fuse
@@ -391,14 +332,7 @@ while (1) {
 			update_loadcurrent($current);
 			update_details();
 		}
-	# Fall-back for DSMR, keep updating zero value
-	} elsif ($gridNettoReady == 1 && (time() - $gridDeliveredTimeStamp > 45 && time() - $gridReturnedTimeStamp > 45) && (time()-$curren_lastSet) > 45 && $current == 0 && $chargepointStatus =~ /connected/) {
-		#INFO "Updating current
-		$curren_lastSet = time();
-		INFO "$chargeMode | $current A | Running in fallback mode";
-		update_loadcurrent($current);
-		update_details();
-	}
+	} 
 	sleep(1);
 }
 
@@ -408,50 +342,10 @@ sub mqtt_handler {
 
 	TRACE "Got '$data' from $topic";
 
-	if ($topic =~ /phase_currently_returned_l1/) {
-		return if ($data == 0); # Do not process empty values
-		$l1power = $data * - 1;
-		$topicUpdated++;
-		$gridL1TimeStamp = time();
-	} elsif ($topic =~ /phase_currently_returned_l2/) {
-		return if ($data == 0); # Do not process empty values
-		$l2power = $data * - 1;
-		$topicUpdated++;
-		$gridL2TimeStamp = time();
-	} elsif ($topic =~ /phase_currently_returned_l3/) {
-		return if ($data == 0); # Do not process empty values
-		$l3power = $data * - 1;
-		$topicUpdated++;
-		$gridL3TimeStamp = time();
-	} elsif ($topic =~ /phase_currently_delivered_l1/) {
-		return if ($data == 0); # Do not process empty values
-		$l1power = $data;
-		$topicUpdated++;
-		$gridL1TimeStamp = time();
-	} elsif ($topic =~ /phase_currently_delivered_l2/) {
-		return if ($data == 0); # Do not process empty values
-		$l2power = $data;
-		$topicUpdated++;
-		$gridL2TimeStamp = time();
-	} elsif ($topic =~ /phase_currently_delivered_l3/) {
-		return if ($data == 0); # Do not process empty values
-		$l3power = $data;
-		$topicUpdated++;
-		$gridL3TimeStamp = time();
-	} elsif ($topic =~ /electricity_currently_delivered/) {
-		#return if ($data == 0); # Do not process empty values
-		$totalDelivered = $data;
-		$gridTotalTopicUpdated++;
-		$gridDeliveredTimeStamp = time();
-	} elsif ($topic =~ /usage/) {
+	if ($topic =~ /usage/) {
 		#return if ($data == 0); # Do not process empty values
 		$gridUsage = $data;
-		INFO "Grid usage retrieved $gridUsage W";
-	} elsif ($topic =~ /electricity_currently_returned/) {
-		#return if ($data == 0); # Do not process empty values
-		$totalReturned = $data * - 1;
-		$gridTotalTopicUpdated++;
-		$gridReturnedTimeStamp = time();
+		#INFO "Grid usage retrieved $gridUsage W";
 	} elsif ($topic =~ /boostperiod/) {
 		INFO "Setting boostperiod timer to $data seconds";
 		$boostmode_timer = $data;
