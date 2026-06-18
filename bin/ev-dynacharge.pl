@@ -91,8 +91,6 @@ my $totalDelivered = 0.000;
 my $l1power = 0;
 my $l2power = 0;
 my $l3power = 0;
-my $difPerc = 0;
-my $inSync = 0;
 
 # Charging limits
 my $mainfuse = 25;
@@ -352,33 +350,21 @@ sub mqtt_handler {
 	if ($topic =~ /phase_currently_returned_l1/) {
 		return if ($data == 0); # Do not process empty values
 		$l1power = $data * - 1;
-		$topicUpdated++;
-		$gridL1TimeStamp = time();
 	} elsif ($topic =~ /phase_currently_returned_l2/) {
 		return if ($data == 0); # Do not process empty values
 		$l2power = $data * - 1;
-		$topicUpdated++;
-		$gridL2TimeStamp = time();
 	} elsif ($topic =~ /phase_currently_returned_l3/) {
 		return if ($data == 0); # Do not process empty values
 		$l3power = $data * - 1;
-		$topicUpdated++;
-		$gridL3TimeStamp = time();
 	} elsif ($topic =~ /phase_currently_delivered_l1/) {
 		return if ($data == 0); # Do not process empty values
 		$l1power = $data;
-		$topicUpdated++;
-		$gridL1TimeStamp = time();
 	} elsif ($topic =~ /phase_currently_delivered_l2/) {
 		return if ($data == 0); # Do not process empty values
 		$l2power = $data;
-		$topicUpdated++;
-		$gridL2TimeStamp = time();
 	} elsif ($topic =~ /phase_currently_delivered_l3/) {
 		return if ($data == 0); # Do not process empty values
 		$l3power = $data;
-		$topicUpdated++;
-		$gridL3TimeStamp = time();
 	} elsif ($topic =~ /usage/) {
 		#return if ($data == 0); # Do not process empty values
 		$gridUsage = $data;
