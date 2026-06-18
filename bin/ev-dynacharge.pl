@@ -198,7 +198,7 @@ while (1) {
 						$phases_counter = time() - $phases_lastChecked;
 
 						# Switch if limit is reached to switch in nr of phases
-						if ($phases_counter > $phases_counterLimitTo1Phase || $nr_of_phases == 0) {
+						if ($phases_counter > $phases_counterLimitTo1Phase ) {
 							set_nrOfPhases(1);
 						}
 						else {
