@@ -60,6 +60,13 @@ my $details_topic = 'chargepoint/details';
 my $maxcurrent = 16;
 my $nr_of_phases = 0;
 
+$mqtt->subscribe('dsmr/reading/phase_currently_returned_l1',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_returned_l2',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_returned_l3',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l1',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l2',  \&mqtt_handler);
+$mqtt->subscribe('dsmr/reading/phase_currently_delivered_l3',  \&mqtt_handler);
+
 $mqtt->subscribe('dsmr/meter-stats/electricity_tariff',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/chargepointStatus',  \&mqtt_handler);
 $mqtt->subscribe('chargepoint/voltage',  \&mqtt_handler);
@@ -342,7 +349,37 @@ sub mqtt_handler {
 
 	TRACE "Got '$data' from $topic";
 
-	if ($topic =~ /usage/) {
+	if ($topic =~ /phase_currently_returned_l1/) {
+		return if ($data == 0); # Do not process empty values
+		$l1power = $data * - 1;
+		$topicUpdated++;
+		$gridL1TimeStamp = time();
+	} elsif ($topic =~ /phase_currently_returned_l2/) {
+		return if ($data == 0); # Do not process empty values
+		$l2power = $data * - 1;
+		$topicUpdated++;
+		$gridL2TimeStamp = time();
+	} elsif ($topic =~ /phase_currently_returned_l3/) {
+		return if ($data == 0); # Do not process empty values
+		$l3power = $data * - 1;
+		$topicUpdated++;
+		$gridL3TimeStamp = time();
+	} elsif ($topic =~ /phase_currently_delivered_l1/) {
+		return if ($data == 0); # Do not process empty values
+		$l1power = $data;
+		$topicUpdated++;
+		$gridL1TimeStamp = time();
+	} elsif ($topic =~ /phase_currently_delivered_l2/) {
+		return if ($data == 0); # Do not process empty values
+		$l2power = $data;
+		$topicUpdated++;
+		$gridL2TimeStamp = time();
+	} elsif ($topic =~ /phase_currently_delivered_l3/) {
+		return if ($data == 0); # Do not process empty values
+		$l3power = $data;
+		$topicUpdated++;
+		$gridL3TimeStamp = time();
+	} elsif ($topic =~ /usage/) {
 		#return if ($data == 0); # Do not process empty values
 		$gridUsage = $data;
 		#INFO "Grid usage retrieved $gridUsage W";
