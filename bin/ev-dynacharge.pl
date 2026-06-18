@@ -110,7 +110,7 @@ my $chargepointStatus = 'charging';
 
 # Vars for phase switching
 my $phases_counter = 0;
-my $phases_lastChecked = 1;
+my $phases_lastChecked = 0;
 my $phases_lastSwitched = time() - 30; # Set timer to an 30 seconds ago
 my $phases_counterLimitTo1Phase = 300; # Limit before changing phases
 my $phases_counterLimitTo3Phase = 60; # Limit before changing phases
