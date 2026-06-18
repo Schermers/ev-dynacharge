@@ -443,7 +443,7 @@ sub mqtt_handler {
 		$totalDelivered = $data;
 		$gridTotalTopicUpdated++;
 		$gridDeliveredTimeStamp = time();
-	} elsif ($topic =~ /grid/usage/) {
+	} elsif ($topic =~ /usage/) {
 		#return if ($data == 0); # Do not process empty values
 		$gridUsage = $data;
 		INFO "Grid usage retrieved $gridUsage W";
